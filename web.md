@@ -3206,9 +3206,55 @@ const router = new VueRouter({
 
 **[vue-router（路由）详细教程_vue 路由-CSDN博客](https://blog.csdn.net/wulala_hei/article/details/80488727)**
 
-## 项目部署
+## nginx
 
 **运行npm脚本build，然后将dist文件夹下的文件复制到nginx下的html文件即可**
+
+**nginx反向代理的好处：提高访问速度，进行负载均衡，保证后端服务的安全**
+
+**反向代理和负载均衡的配置**
+
+```nginx.conf
+
+server{
+	listen 80;
+	server_name localhost;
+	location/api/{
+		proxy_pass http://localhost:8080/admin/;
+	}
+}
+```
+
+
+
+```nginx.conf
+upstream webserver{
+	server 192.168.100.128:8080;
+	server 192.168.100.129:8080;
+}
+
+
+server{
+	listen 80;
+	server_name localhost;
+	location/api/{
+		proxy_pass http://webserver/admin/;
+	}
+}
+```
+
+**nginx负载均衡策略**
+
+| 名称       | 说明                                                   |
+| ---------- | ------------------------------------------------------ |
+| 轮询       | 默认方式                                               |
+| weight     | 权重方式，默认为1，权重越高，被分配的客户端请求越多    |
+| ip_hash    | 依据ip分配方式，这样每个访客可以固定访问一个后端服务   |
+| least_conn | 依据最少连接方式，把请求优先分配给连接数少的后端服务   |
+| url_hash   | 依据url分配方式，这样相同的url会被分配到同一个后端服务 |
+| fair       | 依据响应时间方式，响应时间短的服务将会被优先分配       |
+
+
 
 # Maven
 
@@ -4613,6 +4659,16 @@ public class WebConfig implements WebMvcConfigurer {
 
 **拦截范围不同：过滤器Filter会拦截所有的资源，而Interceptor只会拦截Spring环境中的资源。**
 
+### md5加密登录密码
+
+```java
+String str = DigestUtils.md5DigestAsHex(password.getBytes());
+```
+
+**实际存储到数据库的便是加密后的字符串**
+
+
+
 ## 异常处理
 
 **定义一个全局异常处理器，处理所有的异常**
@@ -5036,6 +5092,22 @@ public class AliOSSAutoConfiguration {
 com.aliyun.oss.AliOSSAutoConfiguration
 ```
 
+## 补充技术点
+
+### ThreadLocal
+
+**ThreadLoacl并不是一个Thread，而是Thread的局部变量，它为每一个线程提供单独一份的存储空间，具有线程隔离的效果，只有在线程内才能获取到对应的值，线程外则不能访问**
+
+| 方法                     | 说明                                 |
+| ------------------------ | ------------------------------------ |
+| public void set(T value) | 设置当前线程的线程局部变量的值       |
+| public T get()           | 返回当前线程所对应的线程局部变量的值 |
+| public void remove()     | 移除当前线程的线程局部变量           |
+
+**应用场景：在sjervice层需要获取用户的ID,而用户的ID在jwt令牌里，当我们解析完jwt令牌后，我们就可以把这个id存进ThreadLocal这个存储空间，因为解析jwt令牌和service同属一个线程，因此同时公用一个ThreadLocal内存空间，所以jwt解析阶段所放入的东西，可以被service层访问到**
+
+
+
 
 
 # Mybatis
@@ -5437,4 +5509,66 @@ public interface EmpMapper {
 | git push 别名 分支                 | 推送本地分支上的内容到远程仓库                           |
 | git clone 远程地址                 | 将远程仓库的内容克隆到本地                               |
 | git pull 远程库地址别名 远程分支名 | 将远程仓库对于分支最新内容拉下来后与当前本地分支直接合并 |
+
+# Swagger
+
+## 如何使用
+
+**导入maven项目**
+
+```
+<dependency>
+    <groupId>com.github.xiaoymin</groupId>
+    <artifactId>knife4j-spring-boot-starter</artifactId>
+    <version>3.0.2</version>
+</dependency>
+```
+
+**在配置类中加入knife4j相关配置**
+
+```WebMvcConfiguration
+@Bean
+ public Docket docket(){
+   ApiInfo apiInfo = new ApiInfoBuilder()
+       .title(“苍穹外卖项目接口文档”)
+       .version(“2.0”)
+       .description(“苍穹外卖项目接口文档")
+       .build();
+
+   Docket docket = new Docket(DocumentationType.SWAGGER_2)
+       .apiInfo(apiInfo)
+       .select()
+       //指定生成接口需要扫描的包
+       .apis(RequestHandlerSelectors.basePackage("com.sky.controller"))
+       .paths(PathSelectors.any())
+       .build();
+
+   return docket;
+ }
+```
+
+**设置静态资源映射。否则接口文档页面无法访问**
+
+```WebMvcConfiguration
+
+
+/**
+ * 设置静态资源映射
+ * @param registry
+ **/
+protected void addResourceHandlers(ResourceHandlerRegistry registry) {
+   log.info(“开始设置静态资源映射...");
+   registry.addResourceHandler("/doc.html").addResourceLocations("classpath:/META-INF/resources/");
+   registry.addResourceHandler("/webjars/**").addResourceLocations("classpath:/META-			INF/resources/webjars/");
+ }
+```
+
+## 常用注解
+
+| 注解              | 说明                                                 |
+| ----------------- | ---------------------------------------------------- |
+| @Api              | 用在类上，例如Controller,表示对类的说明              |
+| @ApiModel         | 用在类上，例如entity,DTO,VO                          |
+| @ApiModelPropetry | 用在属性上，描述属性信息                             |
+| @ApiOperation     | 用在方法上，例如Controller的方法，说明方法的用途作用 |
 
