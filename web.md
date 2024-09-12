@@ -5233,6 +5233,114 @@ public class JacksonObjectMapper extends ObjectMapper {
 }
 ```
 
+### 公共字段填充
+
+**基于AOP为所有需要本功能的代码进行功能增强**
+
+**首先需要一个枚举类**
+
+```
+public enum OperationType {
+
+    /**
+     * 更新操作
+     */
+    UPDATE,
+
+    /**
+     * 插入操作
+     */
+    INSERT
+
+}
+```
+
+**然后需要自定义一个注解，来标记哪些方法需要本功能**
+
+```
+@Target(ElementType.METHOD)
+@Retention(RetentionPolicy.RUNTIME)
+public @interface AutoFill {
+    //数据库操作类型：update,insert
+    OperationType value();
+
+}
+```
+
+**编写aop程序**
+
+```
+@Aspect
+@Component
+@Slf4j
+public class AutoFillAspect {
+    /**
+     * 切入点
+     */
+    @Pointcut("@annotation(com.sky.annotation.AutoFill)")
+    public void autoFillPointCut() {
+    }
+
+    /**
+     * 前置通知
+     */
+
+    @Before("autoFillPointCut()")
+    public void autoFill(JoinPoint joinPoint) {
+        log.info("开始进行公共字段的自动填充");
+        //获取到当前被拦截的方法上的数据库操作类型
+        MethodSignature signature = (MethodSignature) joinPoint.getSignature();//获取方法签名对象
+        AutoFill autoFill = signature.getMethod().getAnnotation(AutoFill.class);//获取注解对象
+        OperationType operationType = autoFill.value();//获取数据库的操作类型
+
+
+        //获取当前被拦截的方法的参数--实体对象
+        Object[] args = joinPoint.getArgs();
+        if (args == null || args.length == 0) {
+            return;
+        }
+        Object entity = args[0];
+
+        //准备赋值的数据
+        LocalDateTime now = LocalDateTime.now();
+        Long currentId = BaseContext.getCurrentId();
+
+
+        //根据当前不同的操作类型，为对应的属性通过反射来赋值
+        if (operationType == OperationType.INSERT) {
+            try {
+                Method setCreatTime = entity.getClass().getDeclaredMethod(AutoFillConstant.SET_CREATE_TIME, LocalDateTime.class);
+                Method setCreateUser = entity.getClass().getDeclaredMethod(AutoFillConstant.SET_CREATE_USER, Long.class);
+                Method setUpdateTime = entity.getClass().getDeclaredMethod(AutoFillConstant.SET_UPDATE_TIME, LocalDateTime.class);
+                Method setUpdateUser = entity.getClass().getDeclaredMethod(AutoFillConstant.SET_UPDATE_USER, Long.class);
+                setCreatTime.invoke(entity, now);
+                setCreateUser.invoke(entity,currentId);
+                setUpdateTime.invoke(entity,now);
+                setUpdateUser.invoke(entity,currentId);
+
+            } catch (NoSuchMethodException | IllegalAccessException | InvocationTargetException e) {
+                e.printStackTrace();
+            }
+
+        } else {
+            Method setUpdateTime = null;
+            try {
+                setUpdateTime = entity.getClass().getDeclaredMethod(AutoFillConstant.SET_UPDATE_TIME, LocalDateTime.class);
+                Method setUpdateUser = entity.getClass().getDeclaredMethod(AutoFillConstant.SET_UPDATE_USER, Long.class);
+                setUpdateTime.invoke(entity,now);
+                setUpdateUser.invoke(entity,currentId);
+
+            } catch (NoSuchMethodException | InvocationTargetException | IllegalAccessException e) {
+                e.printStackTrace();
+            }
+
+        }
+
+
+    }
+}
+```
+
 
 
 # Mybatis
