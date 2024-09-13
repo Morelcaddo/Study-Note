@@ -5687,6 +5687,29 @@ public interface EmpMapper {
 </select>
 ```
 
+**insert标签下的属性**
+
+| 名称             | 解释                     | 取值         |
+| ---------------- | ------------------------ | ------------ |
+| useGeneratedKeys | 需要获取自动生成的主键值 | true/false   |
+| keyProperty      | 将主键值返回给对象的Id   | 对象中的属性 |
+
+**案例**
+
+```sql
+<insert id="insert" useGeneratedKeys="true" keyProperty="id">
+    insert into dish (name, category_id, price,
+        image, description, status, create_time, update_time,
+        create_user, update_user) values (#{name}, #{categoryId},
+        #{price}, #{image}, #{description}, #{status}, #{creatTime},
+        #{updateTime}, #{creatUser}, #{updateUser})
+</insert>
+```
+
+
+
+
+
 # Git
 
 ## 常用操作
