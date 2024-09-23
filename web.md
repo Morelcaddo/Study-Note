@@ -5828,3 +5828,117 @@ protected void addResourceHandlers(ResourceHandlerRegistry registry) {
 | @ApiModelPropetry | 用在属性上，描述属性信息                             |
 | @ApiOperation     | 用在方法上，例如Controller的方法，说明方法的用途作用 |
 
+
+
+# Redis
+
+## 启动服务
+
+**启动Redis服务：`redis-server.exe redis.windows.conf`**
+
+**注意：启动服务后，命令行窗口不要关，关掉就会停止服务**
+
+**打开Redis客户端：`redis-cli.exe`**
+
+**完整命令：`redis-cli.exe -h ip -p port`**
+
+**注意：这里需要另开一个窗口，补充的命令可以省略，ip位置换成目标ip,port换成目标端口**
+
+## 常用数据类型
+
+**Redis存储的是key-value结构的数据，其中key是字符串类型，value有中常用的数据类型，分别是字符串string，哈希hash，列表list，集合set，有序集合sorted set/zset**
+
+![](assets\Redis.png)
+
+**字符串(string)：普通字符串，Redis中最简单的数据类型**
+
+**哈希(hash)：也叫散列，类似于Java中的HashMap结构**
+
+**列表(list)：按照插入顺序排序，可以有重复元素，类似于Java中的LinkedList**
+
+**集合(set)：无序集合，没有重复元素，类似于Java中的HashSet**
+
+**有序集合(sorted set / zset)：集合中每个元素关联一个分数（score），根据分数升序排序，没有重复元素**
+
+## 常用命令
+
+### 字符串操作命令
+
+**设置指定key的值：`SET key value`**
+
+**删除指定key的值：`DEL key`**
+
+**获取指定key的值：`GET key`**
+
+**设置指定key的值，并将key的过期时间设为second秒：`SETEX key seconds value`**
+
+**只有key不存在的时候设置key的值：`SETNX key value`**
+
+### 哈希操作指令
+
+**将哈希表key中的字段field的值设置为value：`HSET key field value`**
+
+**获取存储在哈希表中指定字段的值：`HGET key field`**
+
+**删除存储在哈希表中的指定字段：`HDEL key field`**
+
+**获取哈希表中所有字段：`HKEYS key`**
+
+**获取哈希表中所有值：`HVALS key`**
+
+### 列表操作指令
+
+**将一个或多个值插入到表头部：`LPUSH key value1 [value2]`**
+
+**将一个或者多个值插入到表尾部：`	RPUSH key value1 value2 value3 ...`**
+
+**获取列表指定范围内的元素：`LRANGE key start stop`**
+
+**移除并获取列表内 最后一个元素：`RPOP key`**
+
+**移除并获取列表内第一个元素：`LPOP key`**
+
+**获取列表长度：`LLEN key`**
+
+**获取指定下标索引的元素：`LINDEX key index`**
+
+**在指定元素前后插入值：`LINSERT key BEFORE/AFTER value newValue`**
+
+**注意：`LRANGE key 0 -1`可以获取整个列表的元素**
+
+### 集合操作命令
+
+**向集合添加一个或者多个成员：`SADD key member1 [member2]`**
+
+**返回集合中的所有成员：`SMEMBERS key`**
+
+**获取集合的成员数：`SCARD key`**
+
+**返回给定所有集合的交集： `SINSERT key1 [key2]`**
+
+**返回给定所有集合的并集：`SUNION key1 [key2]`**
+
+**删除集合中一个或多个成员：`SREM key member1 [member2]`**
+
+### 有序集合操作命令
+
+**向有序集合添加一个或多个成员：`ZADD key score1 member1 [score2 member2]`**
+
+**通过索引区间返回有序集合中指定区间内的成员：`ZRANGE key start stop [WITHSCORES]`**
+
+**有序集合中对指定成员的分数加上增量increment：`ZINCRBY key increment member`**
+
+**移除有序集合中的一个或者多个成员：`ZREM key member [member...]`**
+
+**注意：跟列表一样区间查找时，stop为0，stop -1则查找所有的元素**
+
+### 通用命令
+
+**查找所有符合给定模式（pattern）的key：`KEYS pattern`**
+
+**检查给定key是否存在：`EXIST key`**
+
+**返回key所存储的值的类型：`TYPE key`**
+
+**用于在key存在时删除key：`DEL key`**
+
