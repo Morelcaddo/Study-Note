@@ -4345,6 +4345,20 @@ private String bucketName;
 </dependency>
 ```
 
+```java
+@Component
+@ConfigurationProperties(prefix = "sky.alioss")
+@Data
+public class AliOssProperties {
+
+    private String endpoint;
+    private String accessKeyId;
+    private String accessKeySecret;
+    private String bucketName;
+
+}
+```
+
 
 
 ### yml配置文件
@@ -5941,4 +5955,119 @@ protected void addResourceHandlers(ResourceHandlerRegistry registry) {
 **返回key所存储的值的类型：`TYPE key`**
 
 **用于在key存在时删除key：`DEL key`**
+
+## Java中操作Redis
+
+### 环境配置
+
+**在maven项目中导入Spring-data-redis**
+
+```xml
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-data-redis</artifactId>
+</dependency>
+```
+
+**配置Redis数据源**
+
+```yaml
+spring:
+  redis:
+    host: ${sky.redis.host}
+    port: ${sky.redis.port}
+    database: ${sky.redis.database}
+```
+
+**编写配置类，创建RedisTemplate对象**
+
+```java
+@Slf4j
+@Configuration
+public class RedisConfiguration {
+    @Bean
+    public RedisTemplate redisTemplate(RedisConnectionFactory redisConnectionFactory) {
+        log.info("开始创建Redis模板类对象....");
+        RedisTemplate<Object,Object> redisTemplate = new RedisTemplate<>();
+        //设置Redis的连接工厂对象
+        redisTemplate.setConnectionFactory(redisConnectionFactory);
+
+        //设置Redis key的序列化器
+        redisTemplate.setKeySerializer(new StringRedisSerializer());
+        //设置Redis Value的序列化器
+        redisTemplate.setValueSerializer(new StringRedisSerializer());
+        //设置Redis HashKey的序列化器
+        redisTemplate.setHashKeySerializer(new StringRedisSerializer());
+        //设置Redis HashValue的序列化器
+        redisTemplate.setHashValueSerializer(new StringRedisSerializer());
+
+        return redisTemplate;
+    }
+}
+```
+
+### 操作字符串类型的数据
+
+```java
+@SpringBootTest
+public class SpringDataRedisTest {
+    @Autowired
+    private RedisTemplate redisTemplate;
+
+    @Test
+    public void testString() {
+        //获取字符串操作对象
+        ValueOperations valueOperations = redisTemplate.opsForValue();
+
+        //SET key value操作
+        valueOperations.set("city", "北京");
+        
+        //GET key操作
+        String city = (String) valueOperations.get("city");
+        System.out.println(city);
+
+        //SETEX key seconds value操作
+        valueOperations.set("code", 1234, 3, TimeUnit.MINUTES);
+
+        //SETNX key value操作
+        valueOperations.setIfAbsent("name", "张三");
+
+    }
+}
+```
+
+### 操作哈希类型的数据
+
+```java
+@SpringBootTest
+public class SpringDataRedisTest {
+    @Autowired
+    private RedisTemplate redisTemplate;
+
+    @Test
+    public void testHash() {
+        //获取哈希操作对象
+        HashOperations hashOperations = redisTemplate.opsForHash();
+
+        //HSET key field value操作
+        hashOperations.put("100", "name", "Alice");
+        hashOperations.put("100", "age", "20");
+
+        //HGET key field操作
+        String name = (String) hashOperations.get("100", "name");
+        System.out.println(name);
+
+        //HDEL key field
+        hashOperations.delete("100", "age");
+
+
+        //HKEYS操作
+        Set keys = hashOperations.keys("100");
+
+
+        //HVALS操作
+        List values = hashOperations.values("100");
+    }
+}
+```
 
