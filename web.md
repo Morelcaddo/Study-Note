@@ -5355,6 +5355,314 @@ public class AutoFillAspect {
 }
 ```
 
+### HttpClient
+
+**引入maven依赖**
+
+```
+<dependecy>
+	<groupId>org.apache.httpcomponents</groupId>
+	<artifactId>httpclient</artifactId>
+	<version>4.5.13</version>
+</dependecy>
+```
+
+**发送请求的步骤：**
+
+**1：创建Httpclient对象**
+
+**2：调用Http请求对象**
+
+**3：调用HttpClient的excute方法发送请求**
+
+**基于HttpClient发送一个Get请求**
+
+```java
+@SpringBootTest
+public class HttpClientTest {
+    /*
+        发送get方式的请求
+     */
+    @Test
+    public void testGet() throws IOException {
+        //创建httpclient对象
+        CloseableHttpClient httpClient = HttpClients.createDefault();
+
+        //创建请求对象
+        HttpGet httpGet = new HttpGet("http://localhost:8080/user/shop/status");
+    
+        //发送请求，获取响应结果
+        CloseableHttpResponse response = httpClient.execute(httpGet);
+    
+        //获取反馈回来的状态码
+        int statusCode = response.getStatusLine().getStatusCode();
+        System.out.println("服务端返回的状态码为：" + statusCode);
+    
+        //获取反馈回来的数据
+        HttpEntity entity = response.getEntity();
+        String body = EntityUtils.toString(entity);
+        System.out.println("返回的数据体为：" + body);
+    
+        //关闭资源
+        response.close();
+        httpClient.close();
+    
+    }
+
+}
+
+
+```
+
+**基于HttpClient发送一个Post请求**
+
+```
+package com.sky.test;
+
+import com.alibaba.fastjson.JSONObject;
+import com.google.gson.JsonObject;
+import org.apache.http.HttpEntity;
+import org.apache.http.client.HttpClient;
+import org.apache.http.client.methods.CloseableHttpResponse;
+import org.apache.http.client.methods.HttpGet;
+import org.apache.http.client.methods.HttpPost;
+import org.apache.http.entity.StringEntity;
+import org.apache.http.impl.client.CloseableHttpClient;
+import org.apache.http.impl.client.HttpClients;
+import org.apache.http.util.EntityUtils;
+import org.junit.jupiter.api.Test;
+import org.springframework.boot.test.context.SpringBootTest;
+
+import java.io.IOException;
+
+@SpringBootTest
+public class HttpClientTest {
+    /*
+        发送post方式的请求
+     */
+    @Test
+    public void testPost() throws IOException {
+        //创建httpclient对象
+        CloseableHttpClient httpClient = HttpClients.createDefault();
+
+        //创建请求对象
+        HttpPost httpPost = new HttpPost("http://localhost:8080/admin/employee/login");
+        JSONObject jsonObject = new JSONObject();
+        jsonObject.put("username","admin");
+        jsonObject.put("password","123456");
+        StringEntity stringentity = new StringEntity(jsonObject.toString());
+        //指定请求的编码方式
+        stringentity.setContentEncoding("utf-8");
+        //数据格式
+        stringentity.setContentType("application/json");
+        httpPost.setEntity(stringentity);
+
+        //发送请求，获取响应结果
+        CloseableHttpResponse response = httpClient.execute(httpPost);
+
+        //获取反馈回来的状态码
+        int statusCode = response.getStatusLine().getStatusCode();
+        System.out.println("服务端返回的状态码为：" + statusCode);
+
+        //获取反馈回来的数据
+        HttpEntity entity = response.getEntity();
+        String body = EntityUtils.toString(entity);
+        System.out.println("返回的数据体为：" + body);
+
+        //关闭资源
+        response.close();
+        httpClient.close();
+    }
+}
+```
+
+**当然上述方法我们可以封装成一个工具类**
+
+```
+package com.sky.utils;
+
+import com.alibaba.fastjson.JSONObject;
+import org.apache.http.NameValuePair;
+import org.apache.http.client.config.RequestConfig;
+import org.apache.http.client.entity.UrlEncodedFormEntity;
+import org.apache.http.client.methods.CloseableHttpResponse;
+import org.apache.http.client.methods.HttpGet;
+import org.apache.http.client.methods.HttpPost;
+import org.apache.http.client.utils.URIBuilder;
+import org.apache.http.entity.StringEntity;
+import org.apache.http.impl.client.CloseableHttpClient;
+import org.apache.http.impl.client.HttpClients;
+import org.apache.http.message.BasicNameValuePair;
+import org.apache.http.util.EntityUtils;
+
+import java.io.IOException;
+import java.net.URI;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * Http工具类
+ */
+public class HttpClientUtil {
+
+    static final  int TIMEOUT_MSEC = 5 * 1000;
+
+    /**
+     * 发送GET方式请求
+     * @param url
+     * @param paramMap
+     * @return
+     */
+    public static String doGet(String url,Map<String,String> paramMap){
+        // 创建Httpclient对象
+        CloseableHttpClient httpClient = HttpClients.createDefault();
+
+        String result = "";
+        CloseableHttpResponse response = null;
+
+        try{
+            URIBuilder builder = new URIBuilder(url);
+            if(paramMap != null){
+                for (String key : paramMap.keySet()) {
+                    builder.addParameter(key,paramMap.get(key));
+                }
+            }
+            URI uri = builder.build();
+
+            //创建GET请求
+            HttpGet httpGet = new HttpGet(uri);
+
+            //发送请求
+            response = httpClient.execute(httpGet);
+
+            //判断响应状态
+            if(response.getStatusLine().getStatusCode() == 200){
+                result = EntityUtils.toString(response.getEntity(),"UTF-8");
+            }
+        }catch (Exception e){
+            e.printStackTrace();
+        }finally {
+            try {
+                response.close();
+                httpClient.close();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+
+        return result;
+    }
+    //paramMap代表的就是请求数据，用map的方式进行了封装
+
+    /**
+     * 发送POST方式请求
+     * @param url
+     * @param paramMap
+     * @return
+     * @throws IOException
+     */
+    public static String doPost(String url, Map<String, String> paramMap) throws IOException {
+        // 创建Httpclient对象
+        CloseableHttpClient httpClient = HttpClients.createDefault();
+        CloseableHttpResponse response = null;
+        String resultString = "";
+
+        try {
+            // 创建Http Post请求
+            HttpPost httpPost = new HttpPost(url);
+
+            // 创建参数列表
+            if (paramMap != null) {
+                List<NameValuePair> paramList = new ArrayList();
+                for (Map.Entry<String, String> param : paramMap.entrySet()) {
+                    paramList.add(new BasicNameValuePair(param.getKey(), param.getValue()));
+                }
+                // 模拟表单
+                UrlEncodedFormEntity entity = new UrlEncodedFormEntity(paramList);
+                httpPost.setEntity(entity);
+            }
+
+            httpPost.setConfig(builderRequestConfig());
+
+            // 执行http请求
+            response = httpClient.execute(httpPost);
+
+            resultString = EntityUtils.toString(response.getEntity(), "UTF-8");
+        } catch (Exception e) {
+            throw e;
+        } finally {
+            try {
+                response.close();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+
+        return resultString;
+    }
+    //paramMap代表的就是请求数据，用map的方式进行了封装
+
+    /**
+     * 发送POST方式请求
+     * @param url
+     * @param paramMap
+     * @return
+     * @throws IOException
+     */
+    public static String doPost4Json(String url, Map<String, String> paramMap) throws IOException {
+        // 创建Httpclient对象
+        CloseableHttpClient httpClient = HttpClients.createDefault();
+        CloseableHttpResponse response = null;
+        String resultString = "";
+
+        try {
+            // 创建Http Post请求
+            HttpPost httpPost = new HttpPost(url);
+
+            if (paramMap != null) {
+                //构造json格式数据
+                JSONObject jsonObject = new JSONObject();
+                for (Map.Entry<String, String> param : paramMap.entrySet()) {
+                    jsonObject.put(param.getKey(),param.getValue());
+                }
+                StringEntity entity = new StringEntity(jsonObject.toString(),"utf-8");
+                //设置请求编码
+                entity.setContentEncoding("utf-8");
+                //设置数据类型
+                entity.setContentType("application/json");
+                httpPost.setEntity(entity);
+            }
+
+            httpPost.setConfig(builderRequestConfig());
+
+            // 执行http请求
+            response = httpClient.execute(httpPost);
+
+            resultString = EntityUtils.toString(response.getEntity(), "UTF-8");
+        } catch (Exception e) {
+            throw e;
+        } finally {
+            try {
+                response.close();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+
+        return resultString;
+    }
+    private static RequestConfig builderRequestConfig() {
+        return RequestConfig.custom()
+                .setConnectTimeout(TIMEOUT_MSEC)
+                .setConnectionRequestTimeout(TIMEOUT_MSEC)
+                .setSocketTimeout(TIMEOUT_MSEC).build();
+    }
+
+}
+
+```
+
 
 
 # Mybatis
@@ -5904,7 +6212,7 @@ protected void addResourceHandlers(ResourceHandlerRegistry registry) {
 
 **将一个或多个值插入到表头部：`LPUSH key value1 [value2]`**
 
-**将一个或者多个值插入到表尾部：`	RPUSH key value1 value2 value3 ...`**
+**将一个或者多个值插入到表尾部：`	RPUSH key value1 [value2] [value3] ...`**
 
 **获取列表指定范围内的元素：`LRANGE key start stop`**
 
@@ -5928,7 +6236,7 @@ protected void addResourceHandlers(ResourceHandlerRegistry registry) {
 
 **获取集合的成员数：`SCARD key`**
 
-**返回给定所有集合的交集： `SINSERT key1 [key2]`**
+**返回给定所有集合的并集：`SUNION key1 [key2]`**
 
 **返回给定所有集合的并集：`SUNION key1 [key2]`**
 
@@ -6070,4 +6378,194 @@ public class SpringDataRedisTest {
     }
 }
 ```
+
+###  操作List类型的数据
+
+```
+@SpringBootTest
+public class SpringDataRedisTest {
+    @Autowired
+    private RedisTemplate redisTemplate;
+
+    @Test
+    public void testList() {
+        //获取list操作对象
+        ListOperations listOperations = redisTemplate.opsForList();
+
+        Collection<String> collection = new ArrayList<>();
+        collection.add("apple");
+        collection.add("banana");
+
+        //LPUSH key value1 [value2]
+        listOperations.leftPush("myList", "d");
+        listOperations.leftPushAll("myList", "a", "b", "c");
+        listOperations.leftPushAll("myList1", collection);
+
+        //RPUSH key value1 [value2]
+        listOperations.rightPush("myList2", "a");
+        listOperations.rightPushAll("myList2", "d", "e", "f");
+        listOperations.rightPushAll("myList3", collection);
+
+
+        //LPOP key
+        listOperations.leftPop("myList");
+
+        //RPOP key
+        listOperations.rightPop("myList");
+
+        //LLEN key
+        Long size = listOperations.size("myList");
+
+        //LRANGE key start stop
+        List mylist = listOperations.range("myList", 0, -1);
+        mylist.forEach(o -> System.out.println(o.toString()));
+
+        //LINDEX key index
+        String result = (String)listOperations.index("myList", 0);
+        System.out.println(result);
+        
+    }
+}
+```
+
+### 操作set类型的数据
+
+```
+@SpringBootTest
+public class SpringDataRedisTest {
+    @Autowired
+    private RedisTemplate redisTemplate;
+
+    @Test
+    public void testSet() {
+        //获取set操作对象
+        SetOperations setOperations = redisTemplate.opsForSet();
+
+        //SADD key member1 [member2]
+        setOperations.add("set1", "A", "b", "c", "al", "bl");
+        setOperations.add("set2", "d", "e", "f", "b", "c");
+
+
+        //SMEMBERS key
+        Set members = setOperations.members("set1");
+        System.out.println(members);
+
+        //获取set的size
+        Long size = setOperations.size("set1");
+
+        //SUNION key1 [key2]
+        Set intersect = setOperations.intersect("set1", "set2");
+        System.out.println(intersect);
+
+
+        //SUNION key1 [key2]
+        Set union = setOperations.union("set1", "set2");
+        System.out.println(union);
+
+        //SREM key member1 [member2]
+        setOperations.remove("set1", "al", "bl");
+
+    }
+}
+```
+
+### 操作zset类型的数据
+
+```
+package com.sky.test;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.data.redis.core.*;
+
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
+import java.util.Set;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
+
+@SpringBootTest
+public class SpringDataRedisTest {
+    @Autowired
+    private RedisTemplate redisTemplate;
+
+    @Test
+    public void testZset() {
+        //获取zset操作对象
+        ZSetOperations zSetOperations = redisTemplate.opsForZSet();
+
+        //ZADD key score1 member1 [score2 member2]
+        zSetOperations.add("zset1", "a", 10);
+        zSetOperations.add("zset1", "b", 12);
+        zSetOperations.add("zset1", "c", 11);
+
+        //ZRANGE key start stop [WITHSCORES]
+        zSetOperations.range("zset1", 0, -1);
+
+        //ZINCRBY key increment member
+        zSetOperations.incrementScore("zset1", "c", 10);
+
+        //ZREM key member [member...]
+        zSetOperations.remove("zset1", "a", "b");
+    }
+
+}
+```
+
+### 通用命令操作
+
+```
+package com.sky.test;
+
+import io.lettuce.core.ScriptOutputType;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.data.redis.connection.DataType;
+import org.springframework.data.redis.core.*;
+
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
+import java.util.Set;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
+
+@SpringBootTest
+public class SpringDataRedisTest {
+    @Autowired
+    private RedisTemplate redisTemplate;
+
+    @Test
+    public void testCommon() {
+
+        //KEYS pattern
+        Set keys = redisTemplate.keys("*");
+        System.out.println(keys);
+        //EXIST key
+        boolean name = redisTemplate.hasKey("name");
+        boolean set1 = redisTemplate.hasKey("set1");
+        System.out.println(name);
+        System.out.println(set1);
+
+        //TYPE key
+        for (Object key : keys) {
+            DataType type = redisTemplate.type(key);
+            System.out.println(type.name());
+        }
+
+        //DEL key
+        redisTemplate.delete("zset1");
+    }
+
+}
+```
+
+
+
+# 微信小程序开发
+
+
 
