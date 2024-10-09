@@ -6567,5 +6567,248 @@ public class SpringDataRedisTest {
 
 # 微信小程序开发
 
+## 入门案例
 
+**主体部分**
+
+| 文件     | 必需 | 作用             |
+| -------- | ---- | ---------------- |
+| app.js   | 是   | 小程序逻辑       |
+| app.json | 是   | 小程序公共配置   |
+| app.wxss | 否   | 小程序公共样式表 |
+
+**文件类型**
+
+| 文件类型 | 必需 | 作用       |
+| -------- | ---- | ---------- |
+| js       | 是   | 页面逻辑   |
+| wxml     | 是   | 页面结构   |
+| json     | 否   | 页面配置   |
+| wxss     | 否   | 页面样式表 |
+
+## 展示文字数据
+
+```javascript
+// index.js
+Page({
+  data:{
+    msg:'hello world'
+  }
+})
+```
+
+```xml
+<!--index.wxml-->
+<navigation-bar title="Weixin" back="{{false}}" color="black" background="#FFF"></navigation-bar>
+<scroll-view class="scrollarea" scroll-y type="list">
+  <view class="container">
+    {{msg}}
+  </view>
+</scroll-view>
+```
+
+## 点击按钮获取用户信息
+
+```javascript
+// index.js
+Page({
+  data:{
+    msg:'hello world'
+  },
+  //获取威信用户的头像和名称
+  getUserInfo(){
+    wx.getUserProfile({
+      desc: '获取用户信息',
+      success: (res)=>{
+        console.log(res.userInfo);
+      }
+    })
+  }
+})
+
+```
+
+```xml
+<!--index.wxml-->
+<navigation-bar title="Weixin" back="{{false}}" color="black" background="#FFF"></navigation-bar>
+<scroll-view class="scrollarea" scroll-y type="list">
+  <view class="container">
+    <view>{{msg}}</view>
+    <view>
+    <button bindtap="getUserInfo" type="primary">获取用户信息</button>
+    </view>
+  </view>
+</scroll-view>
+
+```
+
+## 将获取的数据传给data
+
+```javascript
+// index.js
+Page({
+  data:{
+    msg:'hello world',
+    nickName:''
+  },
+  //获取威信用户的头像和名称
+  getUserInfo(){
+    wx.getUserProfile({
+      desc: '获取用户信息',
+      success: (res)=>{
+        console.log(res.userInfo);
+        //为数据赋值
+        this.setData({
+          nickName: res.userInfo.nickName
+        })
+      }
+    })
+  }
+})
+
+```
+
+```xml
+<!--index.wxml-->
+<navigation-bar title="Weixin" back="{{false}}" color="black" background="#FFF"></navigation-bar>
+<scroll-view class="scrollarea" scroll-y type="list">
+  <view class="container">
+    <view>{{msg}}</view>
+    <view>
+      <button bindtap="getUserInfo" type="primary">获取用户信息</button>
+      昵称:{{nickName}}
+    </view>
+  </view>
+</scroll-view>
+
+```
+
+## 获取微信用户的授权码
+
+```xml
+<!--index.wxml-->
+<navigation-bar title="Weixin" back="{{false}}" color="black" background="#FFF"></navigation-bar>
+<scroll-view class="scrollarea" scroll-y type="list">
+  <view class="container">
+    <view>{{msg}}</view>
+    <view>
+      <button bindtap="getUserInfo" type="primary">获取用户信息</button>
+      昵称:{{nickName}}
+    </view>
+    <view>
+      <button type="warn" bindtap="wxLogin">微信登录</button>
+      授权码：{{code}}
+    </view>
+  </view>
+</scroll-view>
+
+```
+
+```javascript
+// index.js
+Page({
+  data:{
+    msg:'hello world',
+    nickName:'',
+    code:''
+  },
+  //获取威信用户的头像和名称
+  getUserInfo(){
+    wx.getUserProfile({
+      desc: '获取用户信息',
+      success: (res)=>{
+        console.log(res.userInfo);
+        //为数据赋值
+        this.setData({
+          nickName: res.userInfo.nickName
+        })
+      }
+    })
+  },
+
+  //微信登录，获取微信用户的授权码
+  wxLogin(){
+    wx.login({
+      success: (res) => {
+        console.log(res.code)
+        this.setData({
+          code: res.code
+        })
+      }
+    })
+  }
+})
+
+```
+
+## 给后端发送请求
+
+```javascript
+// index.js
+Page({
+  data:{
+    msg:'hello world',
+    nickName:'',
+    code:''
+  },
+  //获取威信用户的头像和名称
+  getUserInfo(){
+    wx.getUserProfile({
+      desc: '获取用户信息',
+      success: (res)=>{
+        console.log(res.userInfo);
+        //为数据赋值
+        this.setData({
+          nickName: res.userInfo.nickName
+        })
+      }
+    })
+  },
+
+  //微信登录，获取微信用户的授权码
+  wxLogin(){
+    wx.login({
+      success: (res) => {
+        console.log(res.code)
+        this.setData({
+          code: res.code
+        })
+      }
+    })
+  },
+
+  sendRequest(){
+    wx.request({
+      url: 'http://localhost:8080/user/shop/status',
+      method:'GET',
+      success:(res)=>{
+        console.log(res.data)
+      }
+    })
+  }
+})
+
+```
+
+```xml
+<!--index.wxml-->
+<navigation-bar title="Weixin" back="{{false}}" color="black" background="#FFF"></navigation-bar>
+<scroll-view class="scrollarea" scroll-y type="list">
+  <view class="container">
+    <view>{{msg}}</view>
+    <view>
+      <button bindtap="getUserInfo" type="primary">获取用户信息</button>
+      昵称:{{nickName}}
+    </view>
+    <view>
+      <button type="warn" bindtap="wxLogin">微信登录</button>
+      授权码：{{code}}
+    </view>
+    <view>
+      <button type = "default" bindtap="sendRequest">发送请求</button>
+    </view>
+  </view>
+</scroll-view>
+
+```
 
