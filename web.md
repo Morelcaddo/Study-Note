@@ -5106,6 +5106,113 @@ public class AliOSSAutoConfiguration {
 com.aliyun.oss.AliOSSAutoConfiguration
 ```
 
+## Spring cathe
+
+### 依赖导入
+
+**Spring cathe是一个框架，实现了基于注解的缓存功能，只需要简单的加一个注解，就能实现缓存功能**
+
+**项目中导入maven坐标**
+
+```xml
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-cache</artifactId>
+    <version>2.7.3</version>
+</dependency>
+```
+
+**在项目中导入Spring-data-redis的相关依赖，spring cathe便可识别要选择哪种缓存实现**
+
+### 常用注解
+
+| 注解           | 说明                                                         |
+| -------------- | ------------------------------------------------------------ |
+| @EnableCathing | 开启缓存注解功能，通常加在启动类上                           |
+| @Catheable     | 在方法执行前先查询缓存中是否有数据，如果有数据，则直接返回缓存数据，如果没有缓存数据，调用方法将返回值放到缓存中 |
+| @CathePut      | 将方法的缓存值放到缓存中                                     |
+| @CatheEvict    | 将一条或多条数据从缓存中删除                                 |
+| @CatheConfig   | 该注解加在类上，可以集中设置CatheNames(value)的值,这样类里面的其他注解就不用设置该属性值了 |
+
+### @EnableCathing
+
+```java
+@EnableCaching
+@SpringBootApplication
+@EnableTransactionManagement //开启注解方式的事务管理
+@Slf4j
+public class SkyApplication {
+    public static void main(String[] args) {
+        SpringApplication.run(SkyApplication.class, args);
+        log.info("server started");
+    }
+}
+```
+
+### @CathePut
+
+```
+@Override
+@Transactional
+@CachePut(key = "#categoryId", cacheNames = "dishCathe")//最后生成的key就是CatheNames::key的形式
+public List<DishVO> getByCategoryIdWithFlavor(Long categoryId) {
+    List<DishVO> list = new ArrayList<>();
+    List<Dish> dishes = dishMapper.getByCategoryId(categoryId);
+    for (Dish dish : dishes) {
+        DishVO dishVO = new DishVO();
+        BeanUtils.copyProperties(dish, dishVO);
+        List<DishFlavor> dishFlavorList = dishFlavorMapper.getByDishId(dish.getId());
+        dishVO.setFlavors(dishFlavorList);
+        list.add(dishVO);
+	}
+    redisTemplate.opsForValue().set(key, list);
+    return list;
+}
+```
+
+**注意：key属性的值需要用spel表达式，#方法参数名的形式即可获得，如果参数类，例如user,则可以#user.id**
+
+**Spring Cache提供了一些供我们使用的SpEL上下文数据，下表直接摘自Spring官方文档：**
+
+| 名称          | 位置       | 描述                                                         | 示例                   |
+| :------------ | :--------- | :----------------------------------------------------------- | :--------------------- |
+| methodName    | root对象   | 当前被调用的方法名                                           | `#root.methodname`     |
+| method        | root对象   | 当前被调用的方法                                             | `#root.method.name`    |
+| target        | root对象   | 当前被调用的目标对象实例                                     | `#root.target`         |
+| targetClass   | root对象   | 当前被调用的目标对象的类                                     | `#root.targetClass`    |
+| args          | root对象   | 当前被调用的方法的参数列表                                   | `#root.args[0]`        |
+| caches        | root对象   | 当前方法调用使用的缓存列表                                   | `#root.caches[0].name` |
+| Argument Name | 执行上下文 | 当前被调用的方法的参数，如findArtisan(Artisan artisan),可以通过#artsian.id获得参数 | `#artsian.id`          |
+| result        | 执行上下文 | 方法执行后的返回值（仅当方法执行后的判断有效，如 unless cacheEvict的beforeInvocation=false） | `#result`              |
+
+**注意：**
+
+1.当我们要使用root对象的属性作为key时我们也可以将“#root”省略，因为Spring默认使用的就是root对象的属性。 如
+
+```
+@Cacheable(key = "targetClass + methodName +#p0")
+```
+
+2.使用方法参数时我们可以直接使用“#参数名”或者“#p参数index”。 如：
+
+```
+@Cacheable(value="users", key="#id")
+@Cacheable(value="users", key="#p0")
+```
+
+**关于@CatheEvict和@Catheable的使用跟@CathePut一致，只需要设置好CatheNames还有key这两个属性即可**
+
+`@CachEvict` 的作用 主要针对方法配置，能够根据一定的条件对缓存进行清空 。
+
+| 属性             | 解释                                                         | 示例                                                 |
+| :--------------- | :----------------------------------------------------------- | :--------------------------------------------------- |
+| allEntries       | 是否清空所有缓存内容，缺省为 false，如果指定为 true，则方法调用后将立即清空所有缓存，如果匹配的是多个数据，则需要设置本属性 | @CachEvict(value=”testcache”,allEntries=true)        |
+| beforeInvocation | 是否在方法执行前就清空，缺省为 false，如果指定为 true，则在方法还没有执行的时候就清空缓存，缺省情况下，如果方法执行抛出异常，则不会清空缓存 | @CachEvict(value=”testcache”，beforeInvocation=true) |
+
+
+
+
+
 ## 补充技术点
 
 ### ThreadLocal
