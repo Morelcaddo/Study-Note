@@ -5225,7 +5225,7 @@ public List<DishVO> getByCategoryIdWithFlavor(Long categoryId) {
 | public T get()           | 返回当前线程所对应的线程局部变量的值 |
 | public void remove()     | 移除当前线程的线程局部变量           |
 
-**应用场景：在sjervice层需要获取用户的ID,而用户的ID在jwt令牌里，当我们解析完jwt令牌后，我们就可以把这个id存进ThreadLocal这个存储空间，因为解析jwt令牌和service同属一个线程，因此同时公用一个ThreadLocal内存空间，所以jwt解析阶段所放入的东西，可以被service层访问到**
+**应用场景：在service层需要获取用户的ID,而用户的ID在jwt令牌里，当我们解析完jwt令牌后，我们就可以把这个id存进ThreadLocal这个存储空间，因为解析jwt令牌和service同属一个线程，因此同时公用一个ThreadLocal内存空间，所以jwt解析阶段所放入的东西，可以被service层访问到**
 
 ### Spring boot日期格式化
 
@@ -6959,3 +6959,10 @@ Page({
 | errmsg      | string | 错误信息                                                     |
 | openid      | string | 用户唯一标识                                                 |
 | errcode     | int32  | 错误码                                                       |
+
+## 微信支付
+
+![](assets\image-20241021224342821.png)
+
+**详细接口文档：https://pay.weixin.qq.com/doc/v3/merchant/4012525110**
+
