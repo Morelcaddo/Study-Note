@@ -4411,12 +4411,6 @@ hobby:
 
 **三种配置文件优先级排序：命令行属性>java系统属性>properties>yml>yaml**
 
-
-
-
-
-
-
 ## 登录校验
 
 ### 会话
@@ -4994,17 +4988,23 @@ public class TliasApplication {
 }
 ```
 
+### @Configuration
+
 **我们只需要在启动类定义一个方法返回值是需要管理的对象，在这个方法上面加上@Bean注解即可，但是一般我们建议定义一个配置类，在这个类上加上@Configuration,将这个方法放到这个类里**
 
 **通过@Bean注解的name/value属性指定bean名称，如果未指定，则方法名就是**
 
 **如果还需要给这个第三方bean加新的依赖的话，只需要在方法的参数加上对应依赖的形参即可,例如AliOSSUtils这个类还需要依赖AliOSSProperties，但是我们不能通过@Autowired进行注入，就可以用如下方法进行注入**
 
-
-
 ```
 @Configuration
 @EnableConfigurationProperties(AliOSSProperties.class)
+//当需要依赖的aliOSSProperties对象没有加@Component注解也就是，该对象不是IOC容器被管理的bean时，加此注解
+//主要是用来把properties或者yml配置文件转化为bean来使用的，而@EnableConfigurationProperties注解的作用是，
+//@ConfigurationProperties注解生效。
+
+
+@ConfigurationProperties
 public class AliOSSAutoConfiguration {
     @Bean
     public AliOSSUtils aliOSSUtils(AliOSSProperties aliOSSProperties){
@@ -5209,7 +5209,57 @@ public List<DishVO> getByCategoryIdWithFlavor(Long categoryId) {
 | allEntries       | 是否清空所有缓存内容，缺省为 false，如果指定为 true，则方法调用后将立即清空所有缓存，如果匹配的是多个数据，则需要设置本属性 | @CachEvict(value=”testcache”,allEntries=true)        |
 | beforeInvocation | 是否在方法执行前就清空，缺省为 false，如果指定为 true，则在方法还没有执行的时候就清空缓存，缺省情况下，如果方法执行抛出异常，则不会清空缓存 | @CachEvict(value=”testcache”，beforeInvocation=true) |
 
+## Spring task
 
+**spring task是spring框架提供的任务调度工具，可以按照约定的时间自动执行某个代码逻辑**
+
+**定位：定时任务框架**
+
+**应用场景：**
+
+**信用卡每月还款提醒**
+
+**银行贷款每月还款提醒**
+
+**火车票售票系统处理未支付订单**
+
+**入职纪念日为用户发送通知**
+
+### cron表达式
+
+**定义：cron表达式就是一个字符串用于定义任务触发的时间**
+
+**构成规则：分为6-7个域，由空格分隔开，每个域代表一个含义**
+
+**每个域表达的含义分别是：秒，分钟，小时，日，月，周，年（可选）**
+
+**在线生成网站：https://cron.qqe2.com/**
+
+### 入门案例
+
+**操作步骤：**
+
+**导入maven坐标 spring-context已经存在**
+
+**启动类添加注解@EnableScheduling**
+
+**自定义定时任务类**
+
+**注意：自定义任务类需要加上@Component注解**
+
+```java
+@Component
+@Slf4j
+public class MyTask {
+    /*
+     * 定时任务，每隔5秒触发一次
+     */
+    @Scheduled(cron = "0/5 * * * * ?")
+    public void executeTask(){
+        log.info("定时任务开始执行：{}",new Date());
+    }
+}
+```
 
 
 
@@ -5768,6 +5818,138 @@ public class HttpClientUtil {
 
 }
 
+```
+
+### WebSocket
+
+#### 基本概念
+
+**webSocket是基于tcp的一种新的网络协议，它实现了浏览器与服务器全双工通信——浏览器和服务器只完成一次握手，两者可以创建持久性的连接，并进行双向数据传输**
+
+**HTTP协议和WebSocket协议对比：**
+
+**Http是短连接，WebSocket是长连接**
+
+**Http通信是单向的，基于请求响应模式，WebSocket支持双向通信**
+
+**二者的底层都是tcp连接**
+
+**应用场景：需要实时更新的数据，例如**
+
+**视频弹幕**
+
+**网页聊天**
+
+**体育实况更新**
+
+**股票基金报价实时更新**
+
+#### **使用步骤**
+
+**1：提供一个页面作为WebSocket客户端**
+
+**2：导入WebSocket的maven坐标**
+
+```xml
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-websocket</artifactId>
+</dependency>
+```
+
+**3：导入WebSocket服务端组件WebSocketServer,用于和客户端通信**
+
+```java
+/**
+ * WebSocket服务
+ */
+@Component
+@ServerEndpoint("/ws/{sid}")
+public class WebSocketServer {
+
+    //存放会话对象
+    private static Map<String, Session> sessionMap = new HashMap();
+
+    /**
+     * 连接建立成功调用的方法
+     */
+    @OnOpen
+    public void onOpen(Session session, @PathParam("sid") String sid) {
+        System.out.println("客户端：" + sid + "建立连接");
+        sessionMap.put(sid, session);
+    }
+
+    /**
+     * 收到客户端消息后调用的方法
+     *
+     * @param message 客户端发送过来的消息
+     */
+    @OnMessage
+    public void onMessage(String message, @PathParam("sid") String sid) {
+        System.out.println("收到来自客户端：" + sid + "的信息:" + message);
+    }
+
+    /**
+     * 连接关闭调用的方法
+     *
+     * @param sid
+     */
+    @OnClose
+    public void onClose(@PathParam("sid") String sid) {
+        System.out.println("连接断开:" + sid);
+        sessionMap.remove(sid);
+    }
+
+    /**
+     * 群发
+     *
+     * @param message
+     */
+    public void sendToAllClient(String message) {
+        Collection<Session> sessions = sessionMap.values();
+        for (Session session : sessions) {
+            try {
+                //服务器向客户端发送消息
+                session.getBasicRemote().sendText(message);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+}
+```
+
+**4：导入配置类WebSocketConfiguration,注册WebSocket的服务端组件**
+
+```java
+@Configuration
+public class WebSocketConfiguration {
+
+    @Bean
+    public ServerEndpointExporter serverEndpointExporter() {
+        return new ServerEndpointExporter();
+    }
+
+}
+```
+
+**5：导入定时任务类WebSocketTask,定时向客户端推送数据**
+
+```Java
+@Component
+public class WebSocketTask {
+    @Autowired
+    private WebSocketServer webSocketServer;
+
+    /**
+     * 通过WebSocket每隔5秒向客户端发送消息
+     */
+    @Scheduled(cron = "0/5 * * * * ?")
+    public void sendMessageToClient() {
+        webSocketServer.sendToAllClient("这是来自服务端的消息：" + DateTimeFormatter.ofPattern("HH:mm:ss").format(LocalDateTime.now()));
+    }
+}
 ```
 
 
