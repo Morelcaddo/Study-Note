@@ -4696,6 +4696,8 @@ public class GlobalExceptionHandler {
 }
 ```
 
+
+
 ## 事务管理
 
 ### 事务回顾@Transactional
@@ -5276,6 +5278,73 @@ public class MyTask {
 | public void remove()     | 移除当前线程的线程局部变量           |
 
 **应用场景：在service层需要获取用户的ID,而用户的ID在jwt令牌里，当我们解析完jwt令牌后，我们就可以把这个id存进ThreadLocal这个存储空间，因为解析jwt令牌和service同属一个线程，因此同时公用一个ThreadLocal内存空间，所以jwt解析阶段所放入的东西，可以被service层访问到**
+
+### Fastjson
+
+**该工具包可以快速把json字符串转换为一个json类，方便数据的获取**
+
+**maven坐标**
+
+```
+<dependency>
+    <groupId>com.alibaba</groupId>
+    <artifactId>fastjson</artifactId>
+</dependency>
+```
+
+**样例代码**
+
+```java
+//处理路径规划接口的返回结果
+JSONObject routingJSONObject = JSON.parseObject(resultRouting);
+
+if (!routingJSONObject.getString("status").equals("0")) {
+    throw new OrderBusinessException("路径规划失败");
+}
+
+JSONArray jsonArray = routingJSONObject.getJSONObject("result")
+        .getJSONArray("routes");
+Integer distance = (Integer) ((JSONObject) jsonArray.get(0)).get("distance");
+```
+
+
+
+### Lombok
+
+**lombok是一个实用的java类库，能通过注解的形式自动生成构造器，getter/setter,equals,hashcode,toString等方法，并可以自动化生成日志变量**
+
+| 注解                | 作用                                                         |
+| ------------------- | ------------------------------------------------------------ |
+| @Getter/@Setter     | 为所有的属性提供get/set方法                                  |
+| @ToString           | 会给类自动生成易阅读的toString方法                           |
+| @EqualsAndHashCode  | 根据类所拥有的非静态字段自动重写equals和hashcode方法         |
+| @Data               | 提供了更综合的生成代码功能（@Getter+@Setter+@ToString+@EqualsAndHashCode） |
+| @NoArgsConstructor  | 为实体类提供生成无参的构造器方法                             |
+| @AllArgsConstructor | 为实体类生成除了static修饰的字段之外带有各参数的构造器方法   |
+| @Builder            | 注释为你的类生成相对略微复杂的构建器API。比如给Student类加上该注解，效果如下 |
+
+```java
+Student.builder()
+               .sno( "001" )
+               .sname( "admin" )
+               .sage( 18 )
+               .sphone( "110" )
+               .build();
+```
+
+
+
+**maven坐标**
+
+```
+<!--lombok-->
+<dependency>
+	<groupId>org.projectlombok</groupId>
+	<artifactId>lombok</artifactId>
+</dependency>
+```
+
+
 
 ### Spring boot日期格式化
 
@@ -6009,26 +6078,7 @@ class MybatieDemoApplicationTests {
 </dependency>
 ```
 
-## lombok
 
-**lombok是一个实用的java类库，能通过注解的形式自动生成构造器，getter/setter,equals,hashcode,toString等方法，并可以自动化生成日志变量**
-
-| 注解                | 作用                                                         |
-| ------------------- | ------------------------------------------------------------ |
-| @Getter/@Setter     | 为所有的属性提供get/set方法                                  |
-| @ToString           | 会给类自动生成易阅读的toString方法                           |
-| @EqualsAndHashCode  | 根据类所拥有的非静态字段自动重写equals和hashcode方法         |
-| @Data               | 提供了更综合的生成代码功能（@Getter+@Setter+@ToString+@EqualsAndHashCode） |
-| @NoArgsConstructor  | 为实体类提供生成无参的构造器方法                             |
-| @AllArgsConstructor | 为实体类生成除了static修饰的字段之外带有各参数的构造器方法   |
-
-```
-<!--lombok-->
-<dependency>
-	<groupId>org.projectlombok</groupId>
-	<artifactId>lombok</artifactId>
-</dependency>
-```
 
 ## Mybatis基础操作
 
