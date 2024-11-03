@@ -6106,14 +6106,31 @@ public class WebSocketTask {
 
 **使用教程：https://echarts.apache.org/handbook/zh/get-started/**
 
+### Apache POI
 
-search...
+**Apache POI是一个处理Microsoft Office各种文件格式的开源项目，就是在java程序中进行Office的各种文件操作**
 
-[收藏](https://wz.cnblogs.com/)[闪存](https://ing.cnblogs.com/)[小组](https://group.cnblogs.com/)[博问](https://q.cnblogs.com/)
+**应用场景：银行网银系统导出交易明细，各种业务系统导出excel报表，批量导入业务数据**
 
-[怒吼的萝卜](https://www.cnblogs.com/nhdlb)+ 关注
+#### 入门案例
 
-园龄：5年9个月[粉丝：68](https://home.cnblogs.com/u/nhdlb/followers)[关注：1](https://home.cnblogs.com/u/nhdlb/followees)
+**maven坐标**
+
+```xml
+<!-- poi -->
+<dependency>
+    <groupId>org.apache.poi</groupId>
+    <artifactId>poi</artifactId>
+</dependency>
+<dependency>
+    <groupId>org.apache.poi</groupId>
+    <artifactId>poi-ooxml</artifactId>
+</dependency>
+```
+
+
+
+
 
 ### Apache Commons
 
