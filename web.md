@@ -6128,7 +6128,58 @@ public class WebSocketTask {
 </dependency>
 ```
 
+**写入文件操作**
 
+```
+public class Main {
+    public static void main(String[] args) throws IOException {
+        //在内存中创建一个excel文件
+        XSSFWorkbook excel = new XSSFWorkbook();
+        //在excel表中创建一个sheet页
+        XSSFSheet sheet = excel.createSheet("info");
+        //在Sheet中创建行对象,rowNum编号从0开始
+        XSSFRow row = sheet.createRow(0);
+        //在行上面创建单元格,注意这里单元格的索引也是从0开始
+        XSSFCell cell = row.createCell(0);
+        //向单元格里填写内容
+        cell.setCellValue("姓名");
+        //通过输出流将内存中的Excel文件输出
+        FileOutputStream out = new FileOutputStream(new File("D:\\info.xlsx"));
+        excel.write(out);
+        //关闭资源
+        excel.close();
+        out.close();
+
+    }
+}
+```
+
+**读取文件操作**
+
+```java
+public class Main {
+    public static void main(String[] args) throws IOException {
+        //读取磁盘已经存在的excel文件
+        XSSFWorkbook excel = new XSSFWorkbook(new FileInputStream(
+                new File("D:\\info.xlsx")));
+        //读取Excel表中的第一个sheet页,下标从0开始
+        XSSFSheet sheet = excel.getSheetAt(0);
+        //获取有文字的行里最后一行的行号，注意下标从0开始
+        int lastRowNum = sheet.getLastRowNum();
+        for (int i = 0; i <= lastRowNum; i++) {
+            //获取某一行
+            XSSFRow row = sheet.getRow(i);
+            //获取有文字的列列里面的最后一列
+            int cellNum = row.getLastCellNum();
+            for (int j = 0; j < cellNum; j++) {
+                //获取当前单元格的值
+                String cellValue = row.getCell(j).getStringCellValue();
+                System.out.println(cellValue);
+            }
+        }
+    }
+}
+```
 
 
 
