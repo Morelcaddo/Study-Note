@@ -3419,7 +3419,7 @@ module.exports = defineConfig({
 **给当前项目安装**
 
 ```
-npm install element-ui@2.15.3 
+npm i element -ui -s
 ```
 
 **在Main.js引入Element组件库**
@@ -3427,7 +3427,8 @@ npm install element-ui@2.15.3
 ```
 import ElementUI from 'element-ui';
 import 'element-ui/lib/theme-chalk/index.css';
-Vue.use(ElementUI);
+//全局使用element ui
+Vue.use(ElementUI);
 ```
 
 **新建ElementView.vue组件**
@@ -3492,6 +3493,8 @@ import 'element-ui/lib/theme-chalk/index.css';
 
 ## Vue路由
 
+**安装：`npm install vue-router`**
+
 **前端路由：URL中的hash(#号)与组件之间的对应关系**
 
 **组成：**
@@ -3502,40 +3505,408 @@ import 'element-ui/lib/theme-chalk/index.css';
 
 **<router-view>：动态视图组件，用来渲染展示与路由路径对应的组件**
 
+**router文件夹下index.js文件的内容**
+
 ```
+import Vue from 'vue'
+import VueRouter from 'vue-router'
+import HomeView from '../views/HomeView.vue'
+
 Vue.use(VueRouter)
 
 const routes = [
   {
-    path: '/emp', //连接路径
-    name: 'emp',  //路由名称
-    component: () => import('../views/tlias/EmpView.vue')//连接的板块
+    path: '/',
+    name: 'home',
+    component: HomeView
   },
   {
-    path: '/dept',
-    name: 'dept',
-    component: () => import('../views/tlias/DeptView.vue')
+    path: '/about',
+    name: 'about',
+    // route level code-splitting
+    // this generates a separate chunk (about.[hash].js) for this route
+    // which is lazy-loaded when the route is visited.
+    component: () => import(/* webpackChunkName: "about" */ '../views/AboutView.vue')
   }
 ]
 
 const router = new VueRouter({
   routes
 })
-```
+
+export default router
 
 ```
-<router-link to="/">[text]</router-link>
-```
 
-**to：导航路径，要填写的是你在router/index.js文件里配置的path值，如果要导航到默认首页，只需要写成 to="/" ，**
-
-**[text] ：就是我们要显示给用户的导航名称。**
+**在App.vue中使用<router-link></router-link>组件实现页面跳转**
 
 ```
-<emp-view></emp-view>//在app.vue中使用这个标签进行访问
+<template>
+  <div id="app">
+    <nav>
+      <router-link to="/">Home</router-link> |
+      <router-link to="/about">About</router-link>
+    </nav>
+    <router-view/>
+  </div>
+</template>
+
+<style>
+#app {
+  font-family: Avenir, Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-align: center;
+  color: #2c3e50;
+}
+
+nav {
+  padding: 30px;
+}
+
+nav a {
+  font-weight: bold;
+  color: #2c3e50;
+}
+
+nav a.router-link-exact-active {
+  color: #42b983;
+}
+</style>
+
 ```
+
+
+
+**也可以在App.vue中实现编程式路由跳转**
+
+```
+<template>
+  <div id="app">
+    <nav>
+      <router-link to="/">Home</router-link> |
+      <router-link to="/about">About</router-link> |
+      <input type="button" value="编程式路由跳转" @click="jump" />
+    </nav>
+    <router-view />
+  </div>
+</template>
+
+<script>
+export default {
+  methods: {
+    jump() {
+      this.$router.push({ path: "/about" });
+    },
+  },
+};
+</script>
+
+<style>
+#app {
+  font-family: Avenir, Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-align: center;
+  color: #2c3e50;
+}
+
+nav {
+  padding: 30px;
+}
+
+nav a {
+  font-weight: bold;
+  color: #2c3e50;
+}
+
+nav a.router-link-exact-active {
+  color: #42b983;
+}
+</style>
+
+```
+
+**重定向属性的使用**
+
+**场景需求：假设我们需要对所有不存在的请求资源做处理，则可以用一下的方法去实现**
+
+```
+import Vue from 'vue'
+import VueRouter from 'vue-router'
+import HomeView from '../views/HomeView.vue'
+
+Vue.use(VueRouter)
+
+const routes = [
+  {
+    path: '/',
+    name: 'home',
+    component: HomeView
+  },
+  {
+    path: '/about',
+    name: 'about',
+    // route level code-splitting
+    // this generates a separate chunk (about.[hash].js) for this route
+    // which is lazy-loaded when the route is visited.
+    component: () => import(/* webpackChunkName: "about" */ '../views/AboutView.vue')
+  },
+  {
+    path: '/404',
+    component: () => import('../views/404View.vue')
+  },
+  {
+    path: '*',
+    redirect: '/404'
+  }
+  
+]
+
+const router = new VueRouter({
+  routes
+})
+
+export default router
+```
+
+**代码解释：这里当访问路径没有匹配到时，就会自动匹配到'*'路径，此时对该路径请求进行重定向，重定向到/404请求即可**
+
+**通过children属性实现嵌套路由**
+
+```
+const routes = [
+  {
+    path: '/c',
+    component: () => import('../views/container/ContainerView.vue'),
+    children: [
+      {
+        path: '/c/p1',
+        component: () => import('../views/container/P1View.vue')
+      },
+      {
+        path: '/c/p2',
+        component: () => import('../views/container/P2View.vue')
+      },
+      {
+        path: '/c/p3',
+        component: () => import('../views/container/P3View.vue')
+      }
+    ]
+  },  
+]
+```
+
+
 
 **[vue-router（路由）详细教程_vue 路由-CSDN博客](https://blog.csdn.net/wulala_hei/article/details/80488727)**
+
+## Vue x
+
+**Vue x是一个专门为Vue.js应用程序开发的状态管理库**
+
+**Vue x可以在多个组件之间共享数据，并且共享的数据是响应式，即数据的变更能及时渲染到模板**
+
+**Vue x采用集中式存储管理所有组件的状态**
+
+### 核心概念
+
+**state:状态对象，集中定义各个组件共享的数据**
+
+**mutations:类似于一个事件，用于修改共享数据，要求必须是同步函数**
+
+**actions:类似于mutation,可以包含异步操作，通过调用mutation来改变共享数据**
+
+### 使用
+
+**在store文件夹下的index.js**
+
+```
+import Vue from 'vue'
+import Vuex from 'vuex'
+
+Vue.use(Vuex)
+
+export default new Vuex.Store({
+  state: {
+    name: '未登录游客'
+  },
+  getters: {
+  },
+  mutations: {
+  },
+  actions: {
+  },
+  modules: {
+  }
+})
+
+```
+
+**如果要在App.vue文件下使用则可以用以下方式**
+
+```
+<template>
+  <div id="app">
+    <nav>
+      <div>{{$store.state.name}}</div>
+    </nav>
+    <router-view />
+  </div>
+</template>
+```
+
+**mutations属性的使用，首先在mutations中设置一个函数用于修改数据**
+
+```
+import Vue from 'vue'
+import Vuex from 'vuex'
+
+Vue.use(Vuex)
+
+export default new Vuex.Store({
+  state: {
+    name: '未登录游客'
+  },
+  getters: {
+  },
+  mutations: {
+    setName(state, newName) {
+      state.name = newName
+    }
+  },
+  actions: {
+  },
+  modules: {
+  }
+})
+
+```
+
+**在App.vue中调用mutations中的方法进行数据的修改**
+
+```
+<template>
+  <div id="app">
+    <nav>
+      <router-link to="/">Home</router-link> |
+      <router-link to="/about">About</router-link> |
+      <input type="button" value="通过mutations修改数据" @click="handleUpdate" />
+      <div>{{$store.state.name}}</div>
+    </nav>
+  </div>
+</template>
+
+<script>
+export default {
+  methods: {
+    handleUpdate() {
+      this.$store.commit('setName','Joker')
+      //commit函数的参数含义，第一个参数代表要调用的函数名字，第二个代表调用的函数的第二个参数，待调用的函数的第一个参数是state,会自动传入
+    }
+  },
+};
+</script>
+
+<style>
+#app {
+  font-family: Avenir, Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-align: center;
+  color: #2c3e50;
+}
+
+nav {
+  padding: 30px;
+}
+
+nav a {
+  font-weight: bold;
+  color: #2c3e50;
+}
+
+nav a.router-link-exact-active {
+  color: #42b983;
+}
+</style>
+
+```
+
+**使用mutations进行异步后端请求修改数据的操作**
+
+**在store文件夹下的index.js文件中进行如下修改**
+
+```
+import axios from 'axios'
+import Vue from 'vue'
+import Vuex from 'vuex'
+
+Vue.use(Vuex)
+
+export default new Vuex.Store({
+  state: {
+    name: '未登录游客'
+  },
+  getters: {
+  },
+  mutations: {
+    setName(state, newName) {
+      state.name = newName
+    }
+  },
+  actions: {
+    setNameByAxios() {
+      axios({
+        url: '/api/admin/employee/login',
+        method: 'post',
+        data: {
+          username: 'admin',
+          password: '123456'
+        }
+      }).then(res => {
+        if(res.data.code == 1){
+          this.commit('setName', res.data.data.name)
+        }
+      })
+    }
+  },
+  modules: {
+  }
+})
+
+```
+
+**在App.vue中调用mutations中的函数**
+
+```
+<template>
+  <div id="app">
+    <nav>
+      <router-link to="/">Home</router-link> |
+      <router-link to="/about">About</router-link> |
+      <input type="button" value="通过mutations修改数据" @click="handleUpdate" />
+      <input type="button" value="通过actions修改数据" @click="handleUpdate2" />
+      <div>{{$store.state.name}}</div>
+    </nav>
+  </div>
+</template>
+
+<script>
+export default {
+  methods: {
+    handleUpdate() {
+      this.$store.commit('setName','Joker')
+    },
+    handleUpdate2() {
+      this.$store.dispatch('setNameByAxios')//调用mutations中的函数，参数含义跟上面action一致
+    }
+  },
+};
+</script>
+```
+
+
 
 ## nginx
 
