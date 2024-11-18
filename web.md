@@ -8323,6 +8323,130 @@ public interface EmpMapper {
 
 
 
+# Mybatis plus
+
+## 入门案例
+
+**依赖引入**
+
+**MybatisPlus官方提供了starter,其中集成了Mybatis和MybatisPlus，并且实现了自动装配的效果，因此我们可以用Mybatis plus的依赖代替Mybatis的依赖**
+
+```
+<dependency>
+	<groupId>com.baomidou</groupId>
+	<artifactId>mybatis-plus-boot-starter</artifacted>
+	<version>3.5.3.1</version>
+</dependency>
+```
+
+**让自定义mapper继承MybatisPlus提供的BaseMapper接口**
+
+**注意这里的泛型一定是你实体类的类型**
+
+```
+public interface UserMapper extends BaseMapper<User>{
+}
+```
+
+**使用事项：**
+
+**1：类名转下划线作为表名**
+
+**2：名为id的字段作为主键**
+
+**3：变量名驼峰转下划线作为表的字段名**
+
+## 常用注解
+
+**当类不满足上述约定俗成时，需要用注解进行配置**
+
+**@TableName:用来指定表名**
+
+**@TableId:用来指定表中的主键字段信息**
+
+**@TableField:用来指定表中的普通字段信息**
+
+**其中@TableId有两个属性，value用于指定对应的表中的字段名，type用于指定id的类型，例如IdType.AUTO就是自增,IdType.INPUT通过set方法自行输入，IdType.ASSIGN_ID,分配ID,接口的identifierGnerator的nextId方法来生成的，默认实现类为DefaultIdtifierGenertor雪花算法,其中最后一个属性是默认属性**
+
+**关于@TableField的使用场景，当成员变量名与数据库的字段名不一致的时候可以使用，还有就是成员变量以is开头，且是布尔值时，还有就是成员变量与数据库关键字冲突时需要用到，用法：**
+
+```
+@TableField("`orders`")
+```
+
+**成员变量不是数据库字段，也需要使用本注解来说明该变量不是数据库中的字段，用法如下**
+
+```
+@TabelField(exist = false)
+```
+
+**以下是注解的使用demo**
+
+```java
+package com.itheima.mp.domain.po;
+
+import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.TableName;
+import lombok.Data;
+
+import java.time.LocalDateTime;
+
+@Data
+@TableName("user")
+public class User {
+
+    /**
+     * 用户id
+     */
+    @TableId(value = "id", type = IdType.AUTO)
+    private Long id;
+
+    /**
+     * 用户名
+     */
+    @TableField("username")
+    private String username;
+
+    /**
+     * 密码
+     */
+    private String password;
+
+    /**
+     * 注册手机号
+     */
+    private String phone;
+
+    /**
+     * 详细信息
+     */
+    private String info;
+
+    /**
+     * 使用状态（1正常 2冻结）
+     */
+    private Integer status;
+
+    /**
+     * 账户余额
+     */
+    private Integer balance;
+
+    /**
+     * 创建时间
+     */
+    private LocalDateTime createTime;
+
+    /**
+     * 更新时间
+     */
+    private LocalDateTime updateTime;
+}
+
+```
+
 
 
 # Git
@@ -9162,3 +9286,8 @@ Page({
     <version>0.4.8</version>
 </dependency>
 ```
+
+
+
+# 
+
