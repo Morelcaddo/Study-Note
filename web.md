@@ -8447,6 +8447,184 @@ public class User {
 
 ```
 
+## 常用配置
+
+![](assets\1732005901781.png)
+
+**注意这里的id-type是全局配置，没有注解配置的优先级高**
+
+## 条件构造器
+
+
+
+![](assets\1732006594619.png)
+
+**select语句使用的demo**
+
+```
+@Test
+void testSelectQueryWrapper() {
+    //以下条件构造相当于select id, username, info, balance
+    // from user where username like '%o%' and balance >= 1000
+    QueryWrapper<User> wrapper = new QueryWrapper<User>()
+            .select("id", "username", "info", "balance")
+            .like("username", "o")
+            .ge("balance", 1000);
+    //userMapper.selectList(wrapper);
+    log.info(userMapper.selectList(wrapper).toString());
+}
+```
+
+**update语句使用的demo**
+
+```
+@Test
+void testUpdateByQueryWrapper() {
+    User user = new User();
+    user.setBalance(2000);
+
+    //update user set balance = 2000 where username = 'jack'
+    QueryWrapper<User> wrapper = new QueryWrapper<User>()
+            .eq("username", "jack");
+
+    //参数1：代表要更新的数据，参数2：代表查询条件
+    userMapper.update(user, wrapper);
+}
+```
+
+```
+@Test
+void testUpdateByUpdateWrapper() {
+    //update user set balance -200  where id in (1, 2, 3)
+    List<Long> ids = List.of(1L, 2L, 3L);
+    UpdateWrapper<User> wrapper = new UpdateWrapper<User>()
+            .setSql("balance = balance - 200")
+            .in("id", ids);
+
+    userMapper.update(null, wrapper);
+}
+```
+
+**select 语句使用LambdaQueryWrapper**
+
+```
+@Test
+void testLambdaQueryWrapper() {
+    //select id, username, info, balance
+    //from user where username like '%o%' and balance >= 1000
+    LambdaQueryWrapper<User> wrapper = new LambdaQueryWrapper<User>()
+            .select(User::getId, User::getUsername, User::getInfo, User::getBalance)
+            .like(User::getUsername, "o")
+            .ge(User::getBalance, 1000);
+    log.info(userMapper.selectList(wrapper).toString());
+}
+```
+
+## 自定义sql
+
+**以update user set balance -200  where id in (1, 2, 3)为例子**
+
+**第一步：构建wrapper条件，并调用对应的mapper**
+
+```java
+@Test
+void testCustomSqlUpdate() {
+    //更新条件
+    List<Long> ids = List.of(1L, 2L, 3L);
+    int amount = 200;
+
+    //定义条件
+    QueryWrapper<User> wrapper = new QueryWrapper<User>()
+            .in("id", ids);
+
+    userMapper.updateBalanceByIds(wrapper, amount);
+}
+```
+
+**第二步：在mapper方法中参数中用Param注解中申明wrapper变量名称必须是ew**
+
+```java
+public interface UserMapper extends BaseMapper<User> {
+
+
+    void updateBalanceByIds(@Param("ew") QueryWrapper<User> wrapper, @Param("amount") int amount);
+}
+```
+
+**第三步：自定义sql，并使用wrapper条件**
+
+```xml
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.itheima.mp.mapper.UserMapper">
+    <update id="updateBalanceByIds">
+        update user set balance = balance - #{amount} ${ew.customSqlSegment}
+    </update>
+
+</mapper>
+```
+
+## Service接口
+
+**继承结构**
+
+![](assets\1732028420493.png)
+
+**解释：IService和ServiceImpl是Mybatis plus中已经提供好的Service接口和对应的接口实现类，而UserService和UserServiceImpl是我们自己写的Service接口和接口实现类，倘若我们要让我们的UserServiceImpl还要拥有Mybatis plus里的Service接口的功能该怎么办呢，并且在拥有这些功能的同时可以不用去实现这些方法？我们只需要让ServiceImpl去继承Mybatis plus中的ServiceImpl,这样UserServiceImpl就会拥有该类的所有功能，因为是继承的实现类，所以还不用去实现这些方法，但是我们在实际开发中使用Service时是通过依赖注入的方式使用的，也就是申明一个UserService类型的变量，将UserServiceImpl注入进入，从而进行使用，这里运用的是多态的思想，但是Mybatis plus中的Service接口所提供的方法只有UserServiceImpl获得了，UserService接口并无法访问到，也就是说现在如果你想使用Mybatis plus中的Service接口的方法，只能通过获取UserServiceimpl类型的变量的方式进行使用，而不能通过依赖注入，依靠多态的属性进行使用，这是因为UserService接口中并没有Mybatis Plus的Service接口中的方法的方法申明，因此我们需要让UserService接口去继承IService接口，从而获得这些方法的申明**
+
+**以下是代码演示**
+
+```java
+@Service
+public class UseerServiceImpl extends ServiceImpl<UserMapper, User> implements IUserService {
+
+
+}
+```
+
+```java
+public interface IUserService extends IService<User>{
+}
+```
+
+
+
+**使用Service接口进行insert操作还有查询操作的示例**
+
+```
+@SpringBootTest
+@Slf4j
+public class IUserServiceTest {
+    @Autowired
+    private IUserService userService;
+
+    @Test
+    public void testSaveUser() {
+        User user = new User();
+        user.setUsername("Maker");
+        user.setPassword("132");
+        user.setPhone("18688990013");
+        user.setBalance(250);
+        user.setInfo("{\"age\": 24, \"intro\": \"英文老师\", \"gender\": \"female\"}");
+        user.setCreateTime(LocalDateTime.now());
+        user.setUpdateTime(LocalDateTime.now());
+
+        userService.save(user);
+
+    }
+
+
+    @Test
+    void testQuery() {
+        List<User> users = userService.listByIds(List.of(1L, 2L, 3L));
+        users.forEach(user -> log.info("用户信息:{}", user));
+    }
+
+}
+```
+
 
 
 # Git
