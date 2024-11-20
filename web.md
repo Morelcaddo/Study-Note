@@ -4886,6 +4886,57 @@ public class DeptController {
 
 **@Autowired默认是按照类型注入，而@Resource默认是按照名称注入**
 
+### 依赖注入的其他方式
+
+**通过set方法进行注入**
+
+```
+@Slf4j
+@RequestMapping("/users")
+@RestController
+@Api(tags = "用户管理模块")
+public class UserController {
+    private IUserService userService;
+
+    public void setUserService(IUserService userService) {
+        this.userService = userService;
+    }
+}
+```
+
+**通过构造方法的方式进行注入**
+
+```
+@Slf4j
+@RequestMapping("/users")
+@RestController
+@Api(tags = "用户管理模块")
+public class UserController {
+    private IUserService userService;
+
+    public UserController(IUserService userService) {
+        this.userService = userService;
+    }
+    
+}
+```
+
+**当然我们也可以用lombok的注解来添加构造函数，常用的@RequiredArgsConstructor注解**
+
+```
+@Slf4j
+@RequestMapping("/users")
+@RestController
+@Api(tags = "用户管理模块")
+@RequiredArgsConstructor
+public class UserController {
+    private final IUserService userService;
+    
+}
+```
+
+
+
 ## 开发规范 Restful
 
 **REST：表述性状态转换，是一种软件结构风格**
@@ -6162,15 +6213,16 @@ Integer distance = (Integer) ((JSONObject) jsonArray.get(0)).get("distance");
 
 **lombok是一个实用的java类库，能通过注解的形式自动生成构造器，getter/setter,equals,hashcode,toString等方法，并可以自动化生成日志变量**
 
-| 注解                | 作用                                                         |
-| ------------------- | ------------------------------------------------------------ |
-| @Getter/@Setter     | 为所有的属性提供get/set方法                                  |
-| @ToString           | 会给类自动生成易阅读的toString方法                           |
-| @EqualsAndHashCode  | 根据类所拥有的非静态字段自动重写equals和hashcode方法         |
-| @Data               | 提供了更综合的生成代码功能（@Getter+@Setter+@ToString+@EqualsAndHashCode） |
-| @NoArgsConstructor  | 为实体类提供生成无参的构造器方法                             |
-| @AllArgsConstructor | 为实体类生成除了static修饰的字段之外带有各参数的构造器方法   |
-| @Builder            | 注释为你的类生成相对略微复杂的构建器API。比如给Student类加上该注解，效果如下 |
+| 注解                     | 作用                                                         |
+| ------------------------ | ------------------------------------------------------------ |
+| @Getter/@Setter          | 为所有的属性提供get/set方法                                  |
+| @ToString                | 会给类自动生成易阅读的toString方法                           |
+| @EqualsAndHashCode       | 根据类所拥有的非静态字段自动重写equals和hashcode方法         |
+| @Data                    | 提供了更综合的生成代码功能（@Getter+@Setter+@ToString+@EqualsAndHashCode） |
+| @NoArgsConstructor       | 为实体类提供生成无参的构造器方法                             |
+| @AllArgsConstructor      | 为实体类生成除了static修饰的字段之外带有各参数的构造器方法   |
+| @Builder                 | 注释为你的类生成相对略微复杂的构建器API。比如给Student类加上该注解，效果如下 |
+| @RequiredArgsConstructor | 为所有的final字段生成构造函数，一般在spring依赖注入时配合final字段来实现依赖注入 |
 
 ```java
 Student.builder()
@@ -6891,6 +6943,86 @@ public class WebSocketTask {
     }
 }
 ```
+
+### HuTool
+
+**maven依赖**
+
+```xml
+<dependency>
+	<groupId>cn.hutool</groupId>
+	<artifactId>hutool-all</artifactId>
+	<version>5.8.11</version>
+</dependency>
+```
+
+**类似于Apache Commons的工具包，详细使用请见使用文档**
+
+
+
+### Swagger
+
+#### 如何使用
+
+**导入maven项目**
+
+```
+<dependency>
+    <groupId>com.github.xiaoymin</groupId>
+    <artifactId>knife4j-spring-boot-starter</artifactId>
+    <version>3.0.2</version>
+</dependency>
+```
+
+**在配置类中加入knife4j相关配置**
+
+```WebMvcConfiguration
+@Bean
+ public Docket docket(){
+   ApiInfo apiInfo = new ApiInfoBuilder()
+       .title(“苍穹外卖项目接口文档”)
+       .version(“2.0”)
+       .description(“苍穹外卖项目接口文档")
+       .build();
+
+   Docket docket = new Docket(DocumentationType.SWAGGER_2)
+       .apiInfo(apiInfo)
+       .select()
+       //指定生成接口需要扫描的包
+       .apis(RequestHandlerSelectors.basePackage("com.sky.controller"))
+       .paths(PathSelectors.any())
+       .build();
+
+   return docket;
+ }
+```
+
+**设置静态资源映射。否则接口文档页面无法访问**
+
+```WebMvcConfiguration
+
+/**
+ * 设置静态资源映射
+ * @param registry
+ **/
+protected void addResourceHandlers(ResourceHandlerRegistry registry) {
+   log.info(“开始设置静态资源映射...");
+   registry.addResourceHandler("/doc.html").addResourceLocations("classpath:/META-INF/resources/");
+   registry.addResourceHandler("/webjars/**").addResourceLocations("classpath:/META-			INF/resources/webjars/");
+ }
+```
+
+#### 常用注解
+
+| 注解              | 说明                                                 |
+| ----------------- | ---------------------------------------------------- |
+| @Api              | 用在类上，例如Controller,表示对类的说明              |
+| @ApiModel         | 用在类上，例如entity,DTO,VO                          |
+| @ApiModelPropetry | 用在属性上，描述属性信息                             |
+| @ApiOperation     | 用在方法上，例如Controller的方法，说明方法的用途作用 |
+| @ApiParam         | 用在方法的参数上用于说明描述参数                     |
+
+
 
 ### Apache ECharts
 
@@ -8591,7 +8723,7 @@ public interface IUserService extends IService<User>{
 
 
 
-**使用Service接口进行insert操作还有查询操作的示例**
+### **使用Service接口进行insert操作还有查询操作**
 
 ```
 @SpringBootTest
@@ -8622,6 +8754,50 @@ public class IUserServiceTest {
         users.forEach(user -> log.info("用户信息:{}", user));
     }
 
+}
+```
+
+### **lambda方法的使用**
+
+**业务场景，假设我们需要一个这样子的sql语句**
+
+![](assets\1732116252636.png)
+
+**如何在不使用动态sql的情况下利用mybatis plus将这个语句实现呢**
+
+```
+@Override
+public List<User> queryUser(UserQuery userQuery) {
+    return lambdaQuery()
+            .like(userQuery.getName() != null, User::getUsername, userQuery.getName())
+            .eq(userQuery.getStatus() != null, User::getStatus, userQuery.getStatus())
+            .ge(userQuery.getMinBalance() != null, User::getBalance, userQuery.getMinBalance())
+            .le(userQuery.getMaxBalance() != null, User::getBalance, userQuery.getMaxBalance())
+            .list();
+}
+```
+
+**业务需求，在扣减余额后，如果余额为0，账户冻结**
+
+```
+@Override
+@Transactional
+public void deductBalance(Long id, Integer money) {
+    User user = getById(id);
+    if (user == null || user.getStatus() == 2) {
+        throw new RuntimeException("用户状态异常！");
+    }
+    if (user.getBalance() < money) {
+        throw new RuntimeException("用户余额不足");
+    }
+
+    int remainBalance = user.getBalance() - money;
+    lambdaUpdate()
+            .set(User::getBalance, remainBalance)
+            .set(remainBalance == 0, User::getStatus, 2)
+            .eq(User::getId, id)
+            .eq(User::getBalance, user.getBalance())//乐观锁
+            .update();
 }
 ```
 
@@ -8682,68 +8858,6 @@ public class IUserServiceTest {
 | git push 别名 分支                 | 推送本地分支上的内容到远程仓库                           |
 | git clone 远程地址                 | 将远程仓库的内容克隆到本地                               |
 | git pull 远程库地址别名 远程分支名 | 将远程仓库对于分支最新内容拉下来后与当前本地分支直接合并 |
-
-# Swagger
-
-## 如何使用
-
-**导入maven项目**
-
-```
-<dependency>
-    <groupId>com.github.xiaoymin</groupId>
-    <artifactId>knife4j-spring-boot-starter</artifactId>
-    <version>3.0.2</version>
-</dependency>
-```
-
-**在配置类中加入knife4j相关配置**
-
-```WebMvcConfiguration
-@Bean
- public Docket docket(){
-   ApiInfo apiInfo = new ApiInfoBuilder()
-       .title(“苍穹外卖项目接口文档”)
-       .version(“2.0”)
-       .description(“苍穹外卖项目接口文档")
-       .build();
-
-   Docket docket = new Docket(DocumentationType.SWAGGER_2)
-       .apiInfo(apiInfo)
-       .select()
-       //指定生成接口需要扫描的包
-       .apis(RequestHandlerSelectors.basePackage("com.sky.controller"))
-       .paths(PathSelectors.any())
-       .build();
-
-   return docket;
- }
-```
-
-**设置静态资源映射。否则接口文档页面无法访问**
-
-```WebMvcConfiguration
-
-
-/**
- * 设置静态资源映射
- * @param registry
- **/
-protected void addResourceHandlers(ResourceHandlerRegistry registry) {
-   log.info(“开始设置静态资源映射...");
-   registry.addResourceHandler("/doc.html").addResourceLocations("classpath:/META-INF/resources/");
-   registry.addResourceHandler("/webjars/**").addResourceLocations("classpath:/META-			INF/resources/webjars/");
- }
-```
-
-## 常用注解
-
-| 注解              | 说明                                                 |
-| ----------------- | ---------------------------------------------------- |
-| @Api              | 用在类上，例如Controller,表示对类的说明              |
-| @ApiModel         | 用在类上，例如entity,DTO,VO                          |
-| @ApiModelPropetry | 用在属性上，描述属性信息                             |
-| @ApiOperation     | 用在方法上，例如Controller的方法，说明方法的用途作用 |
 
 
 
