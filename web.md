@@ -4935,6 +4935,10 @@ public class UserController {
 }
 ```
 
+### 循环依赖
+
+ **在 Spring 应用中，循环依赖指的是两个或多个 Bean 之间相互引用，造成了一个环状的依赖关系。举例来说，如果 Bean A 依赖于 Bean B，同时 Bean B 也依赖于 Bean A，就形成了循环依赖。这种情况下，Spring 容器在创建这些 Bean 时会陷入无限循环，导致应用启动失败或者出现其他不可预测的问题。因此在开发过程中应当尽量避免循环依赖的情况出现**
+
 
 
 ## 开发规范 Restful
@@ -8801,7 +8805,92 @@ public void deductBalance(Long id, Integer money) {
 }
 ```
 
+**IService接口批处理操作**
 
+**正常情况下使用saveBatch方法进行批处理操作，底层实际上生成了多条sql语句，但实际上，在类似insert这类操作时，多条数据可以用一条sql语句实现，倘若要达到这个效果需要在application.yaml配置文件中加入如下配置*，其中最关键的就是rewriteBatchedStatements=true，这个属于mysql的配置**
+
+```
+spring:
+  datasource:
+    url: jdbc:mysql://127.0.0.1:3306/mp?useUnicode=true&characterEncoding=UTF-8&autoReconnect=true&serverTimezone=Asia/Shanghai&rewriteBatchedStatements=true
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    username: root
+    password: 1234
+```
+
+## 扩展功能
+
+### 代码生成
+
+**maven依赖**
+
+```xml
+<dependency>
+    <groupId>com.baomidou</groupId>
+    <artifactId>mybatis-plus-generator</artifactId>
+    <version>3.5.9</version>
+</dependency>
+```
+
+**但是现在可以用idea插件MybatisPlus使用，可以直接生成基础框架代码**
+
+### 静态工具
+
+**使用：`Db.方法名`**
+
+![](assets\1732198989432.png)
+
+**代码样例**
+
+```java
+@Override
+public UserVO queryUserAndAddressById(Long id) {
+    User user = getById(id);
+    if (user == null || user.getStatus() == 2) {
+        throw new RuntimeException("用户状态异常");
+    }
+
+    List<Address> addresses = Db.lambdaQuery(Address.class)
+            .eq(Address::getUserId, id)
+            .list();
+
+    UserVO userVO = new UserVO();
+    BeanUtil.copyProperties(user, userVO);
+
+
+    userVO.setAddresses(BeanUtil.copyToList(addresses, AddressVO.class));
+    return userVO;
+    
+}
+```
+
+### 逻辑删除
+
+**逻辑删除是基于代码逻辑模拟删除，但并不会真正删除数据，大致操作流程是这样的，在表中添加一个字段用于标记数据是否被删除，但删除时就把把该字段改为1，查询时只查询标记为0的数据**
+
+**然而这样要改变原本代码的条件构造，然而Mybatis plus给我们提供了不改变原代码的基础上，实现逻辑删除的方式，只需要在Application.yaml文件加入如下配置，就可以在使用原本Mybatis plus的方法的情况下，达到逻辑删除的效果，也就是你任然可以使用delete,update等方法，并且不能加任何多余的条件，底层会自动改成逻辑删除的实现方式**
+
+![](assets\1732201785322.png)
+
+**逻辑删除本身也有自己的问题，比如：**
+
+**会导致数据库表垃圾数据越来越多，影响查询效率**
+
+**SQL中全都需要对逻辑删除字段做判断，影响查询效率**
+
+**因此，我不太推荐采用逻辑删除功能，如果数据不能删除，可以采用把数据迁移到其它表的办法**
+
+### 枚举处理器
+
+**场景：比如数据库中有一个字段status表示账户状态，规范编程建议使用枚举类型，但是需要给对应的变量类型上加上@EnumValue**
+
+
+
+![](assets\1732203014639.png)
+
+**当然要让这个注解生效需要在application.yaml文件加入以下配置**
+
+![](assets\1732203420333.png)
 
 # Git
 
