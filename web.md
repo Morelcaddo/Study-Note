@@ -4565,6 +4565,7 @@ public class RequestController {
 public class User {
     private String name;
     private Integer age;
+    private Address address;
 }
 
 
@@ -8891,6 +8892,122 @@ public UserVO queryUserAndAddressById(Long id) {
 **当然要让这个注解生效需要在application.yaml文件加入以下配置**
 
 ![](assets\1732203420333.png)
+
+
+
+**当然通过枚举包装数据也有其他的问题，比如你向前端返回数据时，返回就不再是1或者2，而是字段名NORMAL或者FROZEN,如果我们想要返回枚举类中的某个值，只需要在这个值的申明上加上@JsonValue注解即可；**
+
+```java
+public enum UserStatus {
+    NORMAL(1, "正常"),
+    FROZEN(2, "冻结"),
+    ;
+
+    @EnumValue
+    @JsonValue
+    private final int value;
+    private final String desc;
+
+    UserStatus(int value, String desc) {
+        this.value = value;
+        this.desc = desc;
+    }
+}
+```
+
+### json处理器
+
+**场景分析**
+
+**在创建user表时，有一个字段信息代表用户的详细信息，这个字段的数据结构是一个json字符串，在代码用string代替，但是这样显示不太方便，如果可以使用类进行分装，就更好了，但是进行分装后的如何让mp把这个类跟字符串里的信息映射起来，成为了我们需要解决的问题**
+
+```
+
+
+@Data
+@TableName(value = "user", autoResultMap = true)
+public class User {
+
+    /**
+     * 用户id
+     */
+    @TableId(value = "id", type = IdType.AUTO)
+    private Long id;
+
+    /**
+     * 用户名
+     */
+    @TableField("username")
+    private String username;
+
+    /**
+     * 密码
+     */
+    private String password;
+
+    /**
+     * 注册手机号
+     */
+    private String phone;
+
+    /**
+     * 详细信息
+     */
+    @TableField(typeHandler = JacksonTypeHandler.class)
+    private UserInfo info;
+
+    /**
+     * 使用状态（1正常 2冻结）
+     */
+    private UserStatus status;
+
+    /**
+     * 账户余额
+     */
+    private Integer balance;
+
+    /**
+     * 创建时间
+     */
+    private LocalDateTime createTime;
+
+    /**
+     * 更新时间
+     */
+    private LocalDateTime updateTime;
+}
+```
+
+**其中最关键的两个注解。一个是@TableName(value = "user", autoResultMap = true)，一个是@TableField(typeHandler = JacksonTypeHandler.class)用于设置json数据的处理器**
+
+## 插件功能
+
+**Mybatis plus提供很多内置拦截提，如下**
+
+| **序号** | **拦截器**                       | **描述**                           |
+| -------- | -------------------------------- | ---------------------------------- |
+| 1        | TenantLineInnerInterceptor       | 多租户插件                         |
+| 2        | DynamicTableNameInnerInterceptor | 动态表名插件                       |
+| 3        | PaginationInnerInterceptor       | 分页插件                           |
+| 4        | OptimisticLockerInnerInterceptor | 乐观锁插件                         |
+| 5        | IllegalSQLInnerInterceptor       | SQL性能规范插件，检测并拦截垃圾SQL |
+| 6        | BlockAttackInnerInterceptor      | 防止全表更新和删除的插件           |
+
+### 分页插件
+
+**首先需要在配置类中配置对应的插件**
+
+![](assets\1732466771120.png)
+
+
+
+
+
+
+
+
+
+
 
 # Git
 
