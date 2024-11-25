@@ -3956,6 +3956,313 @@ server{
 | url_hash   | 依据url分配方式，这样相同的url会被分配到同一个后端服务 |
 | fair       | 依据响应时间方式，响应时间短的服务将会被优先分配       |
 
+# 微信小程序开发
+
+## 入门案例
+
+**主体部分**
+
+| 文件     | 必需 | 作用             |
+| -------- | ---- | ---------------- |
+| app.js   | 是   | 小程序逻辑       |
+| app.json | 是   | 小程序公共配置   |
+| app.wxss | 否   | 小程序公共样式表 |
+
+**文件类型**
+
+| 文件类型 | 必需 | 作用       |
+| -------- | ---- | ---------- |
+| js       | 是   | 页面逻辑   |
+| wxml     | 是   | 页面结构   |
+| json     | 否   | 页面配置   |
+| wxss     | 否   | 页面样式表 |
+
+## 展示文字数据
+
+```javascript
+// index.js
+Page({
+  data:{
+    msg:'hello world'
+  }
+})
+```
+
+```xml
+<!--index.wxml-->
+<navigation-bar title="Weixin" back="{{false}}" color="black" background="#FFF"></navigation-bar>
+<scroll-view class="scrollarea" scroll-y type="list">
+  <view class="container">
+    {{msg}}
+  </view>
+</scroll-view>
+```
+
+## 点击按钮获取用户信息
+
+```javascript
+// index.js
+Page({
+  data:{
+    msg:'hello world'
+  },
+  //获取威信用户的头像和名称
+  getUserInfo(){
+    wx.getUserProfile({
+      desc: '获取用户信息',
+      success: (res)=>{
+        console.log(res.userInfo);
+      }
+    })
+  }
+})
+
+```
+
+```xml
+<!--index.wxml-->
+<navigation-bar title="Weixin" back="{{false}}" color="black" background="#FFF"></navigation-bar>
+<scroll-view class="scrollarea" scroll-y type="list">
+  <view class="container">
+    <view>{{msg}}</view>
+    <view>
+    <button bindtap="getUserInfo" type="primary">获取用户信息</button>
+    </view>
+  </view>
+</scroll-view>
+
+```
+
+## 将获取的数据传给data
+
+```javascript
+// index.js
+Page({
+  data:{
+    msg:'hello world',
+    nickName:''
+  },
+  //获取威信用户的头像和名称
+  getUserInfo(){
+    wx.getUserProfile({
+      desc: '获取用户信息',
+      success: (res)=>{
+        console.log(res.userInfo);
+        //为数据赋值
+        this.setData({
+          nickName: res.userInfo.nickName
+        })
+      }
+    })
+  }
+})
+
+```
+
+```xml
+<!--index.wxml-->
+<navigation-bar title="Weixin" back="{{false}}" color="black" background="#FFF"></navigation-bar>
+<scroll-view class="scrollarea" scroll-y type="list">
+  <view class="container">
+    <view>{{msg}}</view>
+    <view>
+      <button bindtap="getUserInfo" type="primary">获取用户信息</button>
+      昵称:{{nickName}}
+    </view>
+  </view>
+</scroll-view>
+
+```
+
+## 获取微信用户的授权码
+
+```xml
+<!--index.wxml-->
+<navigation-bar title="Weixin" back="{{false}}" color="black" background="#FFF"></navigation-bar>
+<scroll-view class="scrollarea" scroll-y type="list">
+  <view class="container">
+    <view>{{msg}}</view>
+    <view>
+      <button bindtap="getUserInfo" type="primary">获取用户信息</button>
+      昵称:{{nickName}}
+    </view>
+    <view>
+      <button type="warn" bindtap="wxLogin">微信登录</button>
+      授权码：{{code}}
+    </view>
+  </view>
+</scroll-view>
+
+```
+
+```javascript
+// index.js
+Page({
+  data:{
+    msg:'hello world',
+    nickName:'',
+    code:''
+  },
+  //获取威信用户的头像和名称
+  getUserInfo(){
+    wx.getUserProfile({
+      desc: '获取用户信息',
+      success: (res)=>{
+        console.log(res.userInfo);
+        //为数据赋值
+        this.setData({
+          nickName: res.userInfo.nickName
+        })
+      }
+    })
+  },
+
+  //微信登录，获取微信用户的授权码
+  wxLogin(){
+    wx.login({
+      success: (res) => {
+        console.log(res.code)
+        this.setData({
+          code: res.code
+        })
+      }
+    })
+  }
+})
+
+```
+
+## 给后端发送请求
+
+```javascript
+// index.js
+Page({
+  data:{
+    msg:'hello world',
+    nickName:'',
+    code:''
+  },
+  //获取威信用户的头像和名称
+  getUserInfo(){
+    wx.getUserProfile({
+      desc: '获取用户信息',
+      success: (res)=>{
+        console.log(res.userInfo);
+        //为数据赋值
+        this.setData({
+          nickName: res.userInfo.nickName
+        })
+      }
+    })
+  },
+
+  //微信登录，获取微信用户的授权码
+  wxLogin(){
+    wx.login({
+      success: (res) => {
+        console.log(res.code)
+        this.setData({
+          code: res.code
+        })
+      }
+    })
+  },
+
+  sendRequest(){
+    wx.request({
+      url: 'http://localhost:8080/user/shop/status',
+      method:'GET',
+      success:(res)=>{
+        console.log(res.data)
+      }
+    })
+  }
+})
+
+```
+
+```xml
+<!--index.wxml-->
+<navigation-bar title="Weixin" back="{{false}}" color="black" background="#FFF"></navigation-bar>
+<scroll-view class="scrollarea" scroll-y type="list">
+  <view class="container">
+    <view>{{msg}}</view>
+    <view>
+      <button bindtap="getUserInfo" type="primary">获取用户信息</button>
+      昵称:{{nickName}}
+    </view>
+    <view>
+      <button type="warn" bindtap="wxLogin">微信登录</button>
+      授权码：{{code}}
+    </view>
+    <view>
+      <button type = "default" bindtap="sendRequest">发送请求</button>
+    </view>
+  </view>
+</scroll-view>
+
+```
+
+## 登录流程时序
+
+![](assets\api-login.jpg)
+
+**说明**
+
+1. 调用 [wx.login()](https://developers.weixin.qq.com/miniprogram/dev/api/open-api/login/wx.login.html) 获取 **临时登录凭证code** ，并回传到开发者服务器。
+2. 调用 [auth.code2Session](https://developers.weixin.qq.com/miniprogram/dev/OpenApiDoc/user-login/code2Session.html) 接口，换取 **用户唯一标识 OpenID** 、 用户在微信开放平台账号下的**唯一标识UnionID**（若当前小程序已绑定到微信开放平台账号） 和 **会话密钥 session_key**。
+
+之后开发者服务器可以根据用户标识来生成自定义登录态，用于后续业务逻辑中前后端交互时识别用户身份。
+
+**注意事项**
+
+1. 会话密钥 `session_key` 是对用户数据进行 [加密签名](https://developers.weixin.qq.com/miniprogram/dev/framework/open-ability/signature.html) 的密钥。为了应用自身的数据安全，开发者服务器**不应该把会话密钥下发到小程序，也不应该对外提供这个密钥**。
+2. 临时登录凭证 code 只能使用一次
+
+**访问code2Session**
+
+**请求方式：get**
+
+**请求路径：https://api.weixin.qq.com/sns/jscode2session**
+
+**请求参数**
+
+| 属性       | 类型   | 必填 | 说明                                                         |
+| :--------- | :----- | :--- | :----------------------------------------------------------- |
+| appid      | string | 是   | 小程序 appId                                                 |
+| secret     | string | 是   | 小程序 appSecret                                             |
+| js_code    | string | 是   | 登录时获取的 code，可通过[wx.login](https://developers.weixin.qq.com/miniprogram/dev/api/open-api/login/wx.login.html)获取 |
+| grant_type | string | 是   | 授权类型，此处只需填写 authorization_code                    |
+
+**返回参数**
+
+| 属性        | 类型   | 说明                                                         |
+| :---------- | :----- | :----------------------------------------------------------- |
+| session_key | string | 会话密钥                                                     |
+| unionid     | string | 用户在开放平台的唯一标识符，若当前小程序已绑定到微信开放平台账号下会返回，详见 [UnionID 机制说明](https://developers.weixin.qq.com/miniprogram/dev/framework/open-ability/union-id.html)。 |
+| errmsg      | string | 错误信息                                                     |
+| openid      | string | 用户唯一标识                                                 |
+| errcode     | int32  | 错误码                                                       |
+
+## 微信支付
+
+![](assets\image-20241021224342821.png)
+
+**详细接口文档：https://pay.weixin.qq.com/doc/v3/merchant/4012525110**
+
+**相关maven坐标**
+
+```xml
+<!--微信支付-->
+<dependency>
+    <groupId>com.github.wechatpay-apiv3</groupId>
+    <artifactId>wechatpay-apache-httpclient</artifactId>
+    <version>0.4.8</version>
+</dependency>
+```
+
+
+
 # Typescript
 
 ## 基础介绍
@@ -4047,282 +4354,6 @@ hello("123")
 ![](D:\StudyNote\assets\image-20230926152222634.png)
 
 
-
-# Maven
-
-## 依赖相关
-
-**在pom.xml文件中添加依赖**
-
-```
-<dependencies>
-	<dependency>
-	<groupId>ch.qos.logback</groupId>
-	<artifactId>logback-classic</artifactId>
-	<version>1.2.3</version>
-	</dependency>
-</dependencies>
-```
-
-**需注意：依赖具有传递性，如果你不需要某些依赖，可以使用排除依赖,通过以下方式便可以把A项目所依赖的项目B的某个依赖排除**
-
-```
-    <dependencies>
-        <dependency>
-            <groupId>com.itheima</groupId>
-            <artifactId>Project-B</artifactId>
-            <version>1.2.3</version>
-            <!--排除依赖-->
-            <exclusions>
-                <exclusion>
-                    <groupId></groupId>
-                    <artifactId></artifactId>
-                </exclusion>
-            </exclusions>
-        </dependency>
-    </dependencies>
-```
-
-**依赖范围：可以通过<scope></scope>标签进行限制**
-
-| scope值       | 主程序 | 测试程序 | 打包 | 范例         |
-| ------------- | ------ | -------- | ---- | ------------ |
-| complie(默认) | Y      | Y        | Y    | log4j        |
-| test          |        | Y        |      | junit        |
-| provided      | Y      | Y        |      | servelet-api |
-| runtime       |        | Y        | Y    | jdbc驱动     |
-
-## 继承
-
-**概念：继承描述的是两个工程间的关系，与java中的继承相似，子工程可以继承父工程中的配置信息，常见于依赖关系的继承。**
-
-**作用：简化依赖配置、统一管理依赖**
-
-**实现：<parent> … </parent>**
-
-**jar：普通模块打包，springboot项目基本都是jar包（内嵌tomcat运行）**
-
-**war：普通web程序打包，需要部署在外部的tomcat服务器中运行**
-
-**pom：父工程或聚合工程，该模块不写代码，仅进行依赖管理**
-
-
-
-**创建maven模块 tlias-parent ，该工程为父工程，设置打包方式pom(默认jar)。**
-
-```
-<packaging>pom</packaging>
-```
-
-**在子工程的pom.xml文件中，配置继承关系。**
-
-```
-<parent>
-	<groupId>org.springframework.boot</groupId>
-	<artifactId>spring-boot-starter-parent</artifactId>
-	<version>3.3.2</version>
-	<relativePath/> <!-- lookup parent from repository -->
-</parent>
-```
-
- **relativePath指定父工程的pom文件的相对位置（如果不指定，将从本地仓库/远程仓库查找该工程）。**
-
-**在父工程中配置各个工程共有的依赖（子工程会自动继承父工程的依赖）**
-
-**若父子工程都配置了同一个依赖的不同版本，以子工程的为准**
-
-**需注意：每个工程只能继承一个父工程**
-
-## 版本锁定
-
-**在maven中，可以在父工程的pom文件中通过 <dependencyManagement> 来统一管理依赖版本。**
-
-```
-<dependencyManagement>
-	<dependencies>        
-	<!--JWT令牌-->        
-		<dependency>           
-			<groupId>io.jsonwebtoken</groupId>          
-			<artifactId>jjwt</artifactId>          
-			<version>0.9.1</version>      
-		</dependency>
-	</dependencies>
-</dependencyManagement>
-
-```
-
-**子工程引入依赖时，无需指定 <version> 版本号，父工程统一管理。变更依赖版本，只需在父工程中统一变更。**
-
-**自定义属性/引用属性**
-
-```
-<properties>
-	<lombok.version>1.18.24</lombok.version>
-	<jjwt.version>0.9.0</jjwt.version>
-</properties>
-
-```
-
-```
-<dependencies>
-   <dependency>
-     <groupId>org.projectlombok</groupId>
-     <artifactId>lombok</artifactId>
-     <version>${lombok.version}</version>
-   </dependency>
- </dependencies>
-```
-
-**版本锁定优先级**
-
-**显式声明优先**：在 `pom.xml` 中显式声明的依赖版本优先级最高。如果在你的 `pom.xml` 文件中明确指定了某个依赖的版本号，Maven 将优先使用这个版本。
-
-**依赖管理优先**：`dependencyManagement` 部分中的版本声明优先于传递依赖。如果你在 `pom.xml` 文件的 `dependencyManagement` 部分中声明了某个依赖的版本，这个版本会应用于子模块或直接依赖，而不是传递依赖中提到的版本。
-
-**最短路径优先**：在传递依赖中，Maven 会选择路径最短的版本。如果多个传递依赖之间存在版本冲突，Maven 会选择从根项目到依赖之间路径最短的那个版本。
-
-**声明顺序优先**：如果两个依赖在同一级别上声明并且版本冲突，Maven 会优先选择在 `pom.xml` 文件中先声明的那个版本。
-
-**最近定义优先**：在多模块项目中，如果某个模块对依赖的版本有不同定义，Maven 会优先选择最后定义的版本。这通常发生在多层次继承的情况下。
-
-**综上所述，版本锁定遵循就近原则**
-
-## 聚合
-
-**正常情况下，在多模块开发中，要打包一个项目，首先要把这个项目依赖的模块安装，最后才能对项目主体进行打包**
-
-**聚合：将多个模块组成一个整体，同时进行项目的构建**
-
-**聚合工程：一个不具有业务功能的“空”工程**
-
-**maven中可以通过 <modules> 设置当前聚合工程所包含的子模块名称**
-
-```
-<modules>
-   <module>../tlias-pojo</module>
-   <module>../tlias-utils</module>
-   <module>../tlias-web-management</module>
- </modules>
-```
-
-**聚合工程中所包含的模块，在构建时，会自动根据模块间的依赖关系设置构建顺序，与聚合工程中模块的配置书写位置无关。**
-
-## 继承与聚合的对比
-
-**作用**
-
-​	**聚合用于快速构建项目**
-
-​	**继承用于简化依赖配置、统一管理依赖**
-
-**相同点：**
-
-​	**聚合与继承的pom.xml文件打包方式均为pom，可以将两种关系制作到同一个pom文件中**
-
-​	**聚合与继承均属于设计型模块，并无实际的模块内容**
-
-**不同点：**
-
-​	**聚合是在聚合工程中配置关系，聚合可以感知到参与聚合的模块有哪些**
-
-​	**继承是在子模块中配置关系，父模块无法感知哪些子模块继承了自己**
-
-## 私服
-
-**私服是一种特殊的远程仓库，它是架设在局域网内的仓库服务，用来代理位于外部的中央仓库，用于解决团队内部的资源共享与资源同步问题。**
-
-**依赖查找顺序：本地仓库-->私服-->中央仓库** 
-
-**项目版本：**
-
-​	**RELEASE（发行版本）：功能趋于稳定、当前更新停止，可以用于发行的版本，存储在私服中的RELEASE仓库中。**
-
-​	**SNAPSHOT（快照版本）：功能不稳定、尚处于开发中的版本，即快照版本，存储在私服的SNAPSHOT仓库中。**
-
-**设置私服的访问用户名/密码（settings.xml中的servers中配置）**
-
-```
-<server>     
-	<id>maven-releases</id>    
-	<username>admin</username>    
-	<password>admin</password> 
-</server> 
-
-<server>    
-	<id>maven-snapshots</id>   
-	<username>admin</username>   
-	<password>admin</password> 
-</server>
-```
-
-**IDEA的maven工程的pom文件中配置上传（发布）地址**
-
-```xml
-<distributionManagement>
-	<repository>         
-		<id>maven-releases</id>        
-		<url>http://192.168.150.101:8081/repository/maven-releases/</url>    
-	</repository>     
-	<snapshotRepository>         
-		<id>maven-snapshots</id>        
-		<url>http://192.168.150.101:8081/repository/maven-snapshots/</url>   
-	</snapshotRepository> 
-</distributionManagement>
-
-```
-
-**设置私服依赖下载的仓库组地址（settings.xml中的mirrors、profiles中配置）**
-
-```xml
-<mirror>
-   <id>maven-public</id>
-   <mirrorOf>*</mirrorOf>
-   <url>http://192.168.150.101:8081/repository/maven-public/</url>
-</mirror>
-```
-
-**需要在 profiles 中，增加如下配置，来指定snapshot快照版本的依赖，依然允许使用**
-
-```xml
-<profile>
-    <id>allow-snapshots</id>
-        <activation>
-         <activeByDefault>true</activeByDefault>
-        </activation>
-    <repositories>
-        <repository>
-            <id>maven-public</id>
-            <url>http://192.168.150.101:8081/repository/maven-public/</url>
-            <releases>
-             <enabled>true</enabled>
-            </releases>
-            <snapshots>
-             <enabled>true</enabled>
-            </snapshots>
-        </repository>
-    </repositories>
-</profile>
-```
-
-
-
-如果需要上传自己的项目到私服上，需要在项目的pom.xml文件中，增加如下配置，来配置项目发布的地址(也就是私服的地址)
-
-```xml
-<distributionManagement>
-    <!-- release版本的发布地址 -->
-    <repository>
-        <id>maven-releases</id>
-        <url>http://192.168.150.101:8081/repository/maven-releases/</url>
-    </repository>
-    
-    <!-- snapshot版本的发布地址 -->
-    <snapshotRepository>
-        <id>maven-snapshots</id>
-        <url>http://192.168.150.101:8081/repository/maven-snapshots/</url>
-    </snapshotRepository>
-</distributionManagement>
-```
 
 
 
@@ -8462,6 +8493,8 @@ public interface EmpMapper {
 
 # Mybatis plus
 
+**个人不推荐使用，原生的Mybatis就已经很好了**
+
 ## 入门案例
 
 **依赖引入**
@@ -8999,71 +9032,31 @@ public class User {
 
 ![](assets\1732466771120.png)
 
+**代码样例**
 
+```
+@Test
+void testPageQuery() {
+    Page<User> page = Page.of(1, 2);
+    //排序条件
+    page.addOrder(new OrderItem("balance", true));
+    page.addOrder(new OrderItem("id", true));
+    Page<User> p = userService.page(page);
 
+    //总条数
+    long total = p.getTotal();
+    log.info("total = " + total);
 
+    //总页数
+    long pages = p.getPages();
+    log.info("pages = " + pages);
 
+    //获取查询结果
+    List<User> records = p.getRecords();
+    records.forEach(user -> log.info("用户信息:{}", user));
 
-
-
-
-
-
-# Git
-
-## 常用操作
-
-**定义：分布式版本控制系统**
-
-**工作流程：工作区--->提交代码至暂存区--->本地库（历史版本）--->远程库**
-
-**常用命令**
-
-| 命令名称                             | 作用                              |
-| ------------------------------------ | --------------------------------- |
-| git config --global user.name 用户名 | 设置用户签名                      |
-| git config --global user.email 邮箱  | 设置用户签名                      |
-| git init                             | 初始化本地库                      |
-| git status                           | 查看本地库状态                    |
-| git add 文件名                       | 添加到暂存区                      |
-| git commit -m "日志信息" 文件名      | 提交到本地库                      |
-| git reflog                           | 查看历史记录,可以查看提交过的版本 |
-| git reset --hard 版本号              | 版本                              |
-
-## 分支
-
-**定义：在版本控制过程中，同时推进多个任务，为每个任务，我们就可以创建每个任务的单独分支，使用分支也就意味着程序员可以把自己的工作从开发主线上分离开来，开发自己分支的时候，不会影响主线分支的运行**
-
-**常用命令**
-
-| 命令名称            | 作用                                                        |
-| ------------------- | ----------------------------------------------------------- |
-| git branch 分支名   | 创建分支,创建分支后会把原分支上的内容复制一份提交到新分支上 |
-| git branch -v       | 查看分支                                                    |
-| git checkout 分支名 | 切换分支                                                    |
-| git merge 分支名    | 把指定的分支合并到当前分支上                                |
-
-![](D:\StudyNote\assets\08f2e6f2dcd2a9cf36a4a21b07b9a3a5.png)
-
-**上述情况就会出现合并冲突的问题**
-
-**遇到合并冲突时的代码提交步骤：**
-
-**1：人为修改合并代码**
-
-**2：添加到暂存区 `git add  文件名`**
-
-**3：执行提交，此时提交不要带文件名，`git commit -m "日志信息"`**
-
-## 远程仓库操作
-
-| 命令                               | 说明                                                     |
-| ---------------------------------- | -------------------------------------------------------- |
-| git remote -v                      | 查看当前所有远程地址别名                                 |
-| git remote add 别名 远程地址       | 起别名                                                   |
-| git push 别名 分支                 | 推送本地分支上的内容到远程仓库                           |
-| git clone 远程地址                 | 将远程仓库的内容克隆到本地                               |
-| git pull 远程库地址别名 远程分支名 | 将远程仓库对于分支最新内容拉下来后与当前本地分支直接合并 |
+}
+```
 
 
 
@@ -9480,312 +9473,349 @@ public class SpringDataRedisTest {
 
 
 
-# 微信小程序开发
 
-## 入门案例
 
-**主体部分**
+# Maven
 
-| 文件     | 必需 | 作用             |
-| -------- | ---- | ---------------- |
-| app.js   | 是   | 小程序逻辑       |
-| app.json | 是   | 小程序公共配置   |
-| app.wxss | 否   | 小程序公共样式表 |
+## 依赖相关
 
-**文件类型**
+**在pom.xml文件中添加依赖**
 
-| 文件类型 | 必需 | 作用       |
-| -------- | ---- | ---------- |
-| js       | 是   | 页面逻辑   |
-| wxml     | 是   | 页面结构   |
-| json     | 否   | 页面配置   |
-| wxss     | 否   | 页面样式表 |
-
-## 展示文字数据
-
-```javascript
-// index.js
-Page({
-  data:{
-    msg:'hello world'
-  }
-})
 ```
+<dependencies>
+	<dependency>
+	<groupId>ch.qos.logback</groupId>
+	<artifactId>logback-classic</artifactId>
+	<version>1.2.3</version>
+	</dependency>
+</dependencies>
+```
+
+**需注意：依赖具有传递性，如果你不需要某些依赖，可以使用排除依赖,通过以下方式便可以把A项目所依赖的项目B的某个依赖排除**
+
+```
+    <dependencies>
+        <dependency>
+            <groupId>com.itheima</groupId>
+            <artifactId>Project-B</artifactId>
+            <version>1.2.3</version>
+            <!--排除依赖-->
+            <exclusions>
+                <exclusion>
+                    <groupId></groupId>
+                    <artifactId></artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+    </dependencies>
+```
+
+**依赖范围：可以通过<scope></scope>标签进行限制**
+
+| scope值       | 主程序 | 测试程序 | 打包 | 范例         |
+| ------------- | ------ | -------- | ---- | ------------ |
+| complie(默认) | Y      | Y        | Y    | log4j        |
+| test          |        | Y        |      | junit        |
+| provided      | Y      | Y        |      | servelet-api |
+| runtime       |        | Y        | Y    | jdbc驱动     |
+
+## 继承
+
+**概念：继承描述的是两个工程间的关系，与java中的继承相似，子工程可以继承父工程中的配置信息，常见于依赖关系的继承。**
+
+**作用：简化依赖配置、统一管理依赖**
+
+**实现：<parent> … </parent>**
+
+**jar：普通模块打包，springboot项目基本都是jar包（内嵌tomcat运行）**
+
+**war：普通web程序打包，需要部署在外部的tomcat服务器中运行**
+
+**pom：父工程或聚合工程，该模块不写代码，仅进行依赖管理**
+
+
+
+**创建maven模块 tlias-parent ，该工程为父工程，设置打包方式pom(默认jar)。**
+
+```
+<packaging>pom</packaging>
+```
+
+**在子工程的pom.xml文件中，配置继承关系。**
+
+```
+<parent>
+	<groupId>org.springframework.boot</groupId>
+	<artifactId>spring-boot-starter-parent</artifactId>
+	<version>3.3.2</version>
+	<relativePath/> <!-- lookup parent from repository -->
+</parent>
+```
+
+ **relativePath指定父工程的pom文件的相对位置（如果不指定，将从本地仓库/远程仓库查找该工程）。**
+
+**在父工程中配置各个工程共有的依赖（子工程会自动继承父工程的依赖）**
+
+**若父子工程都配置了同一个依赖的不同版本，以子工程的为准**
+
+**需注意：每个工程只能继承一个父工程**
+
+## 版本锁定
+
+**在maven中，可以在父工程的pom文件中通过 <dependencyManagement> 来统一管理依赖版本。**
+
+```
+<dependencyManagement>
+	<dependencies>        
+	<!--JWT令牌-->        
+		<dependency>           
+			<groupId>io.jsonwebtoken</groupId>          
+			<artifactId>jjwt</artifactId>          
+			<version>0.9.1</version>      
+		</dependency>
+	</dependencies>
+</dependencyManagement>
+
+```
+
+**子工程引入依赖时，无需指定 <version> 版本号，父工程统一管理。变更依赖版本，只需在父工程中统一变更。**
+
+**自定义属性/引用属性**
+
+```
+<properties>
+	<lombok.version>1.18.24</lombok.version>
+	<jjwt.version>0.9.0</jjwt.version>
+</properties>
+
+```
+
+```
+<dependencies>
+   <dependency>
+     <groupId>org.projectlombok</groupId>
+     <artifactId>lombok</artifactId>
+     <version>${lombok.version}</version>
+   </dependency>
+ </dependencies>
+```
+
+**版本锁定优先级**
+
+**显式声明优先**：在 `pom.xml` 中显式声明的依赖版本优先级最高。如果在你的 `pom.xml` 文件中明确指定了某个依赖的版本号，Maven 将优先使用这个版本。
+
+**依赖管理优先**：`dependencyManagement` 部分中的版本声明优先于传递依赖。如果你在 `pom.xml` 文件的 `dependencyManagement` 部分中声明了某个依赖的版本，这个版本会应用于子模块或直接依赖，而不是传递依赖中提到的版本。
+
+**最短路径优先**：在传递依赖中，Maven 会选择路径最短的版本。如果多个传递依赖之间存在版本冲突，Maven 会选择从根项目到依赖之间路径最短的那个版本。
+
+**声明顺序优先**：如果两个依赖在同一级别上声明并且版本冲突，Maven 会优先选择在 `pom.xml` 文件中先声明的那个版本。
+
+**最近定义优先**：在多模块项目中，如果某个模块对依赖的版本有不同定义，Maven 会优先选择最后定义的版本。这通常发生在多层次继承的情况下。
+
+**综上所述，版本锁定遵循就近原则**
+
+## 聚合
+
+**正常情况下，在多模块开发中，要打包一个项目，首先要把这个项目依赖的模块安装，最后才能对项目主体进行打包**
+
+**聚合：将多个模块组成一个整体，同时进行项目的构建**
+
+**聚合工程：一个不具有业务功能的“空”工程**
+
+**maven中可以通过 <modules> 设置当前聚合工程所包含的子模块名称**
+
+```
+<modules>
+   <module>../tlias-pojo</module>
+   <module>../tlias-utils</module>
+   <module>../tlias-web-management</module>
+ </modules>
+```
+
+**聚合工程中所包含的模块，在构建时，会自动根据模块间的依赖关系设置构建顺序，与聚合工程中模块的配置书写位置无关。**
+
+## 继承与聚合的对比
+
+**作用**
+
+​	**聚合用于快速构建项目**
+
+​	**继承用于简化依赖配置、统一管理依赖**
+
+**相同点：**
+
+​	**聚合与继承的pom.xml文件打包方式均为pom，可以将两种关系制作到同一个pom文件中**
+
+​	**聚合与继承均属于设计型模块，并无实际的模块内容**
+
+**不同点：**
+
+​	**聚合是在聚合工程中配置关系，聚合可以感知到参与聚合的模块有哪些**
+
+​	**继承是在子模块中配置关系，父模块无法感知哪些子模块继承了自己**
+
+## 私服
+
+**私服是一种特殊的远程仓库，它是架设在局域网内的仓库服务，用来代理位于外部的中央仓库，用于解决团队内部的资源共享与资源同步问题。**
+
+**依赖查找顺序：本地仓库-->私服-->中央仓库** 
+
+**项目版本：**
+
+​	**RELEASE（发行版本）：功能趋于稳定、当前更新停止，可以用于发行的版本，存储在私服中的RELEASE仓库中。**
+
+​	**SNAPSHOT（快照版本）：功能不稳定、尚处于开发中的版本，即快照版本，存储在私服的SNAPSHOT仓库中。**
+
+**设置私服的访问用户名/密码（settings.xml中的servers中配置）**
+
+```
+<server>     
+	<id>maven-releases</id>    
+	<username>admin</username>    
+	<password>admin</password> 
+</server> 
+
+<server>    
+	<id>maven-snapshots</id>   
+	<username>admin</username>   
+	<password>admin</password> 
+</server>
+```
+
+**IDEA的maven工程的pom文件中配置上传（发布）地址**
 
 ```xml
-<!--index.wxml-->
-<navigation-bar title="Weixin" back="{{false}}" color="black" background="#FFF"></navigation-bar>
-<scroll-view class="scrollarea" scroll-y type="list">
-  <view class="container">
-    {{msg}}
-  </view>
-</scroll-view>
-```
-
-## 点击按钮获取用户信息
-
-```javascript
-// index.js
-Page({
-  data:{
-    msg:'hello world'
-  },
-  //获取威信用户的头像和名称
-  getUserInfo(){
-    wx.getUserProfile({
-      desc: '获取用户信息',
-      success: (res)=>{
-        console.log(res.userInfo);
-      }
-    })
-  }
-})
+<distributionManagement>
+	<repository>         
+		<id>maven-releases</id>        
+		<url>http://192.168.150.101:8081/repository/maven-releases/</url>    
+	</repository>     
+	<snapshotRepository>         
+		<id>maven-snapshots</id>        
+		<url>http://192.168.150.101:8081/repository/maven-snapshots/</url>   
+	</snapshotRepository> 
+</distributionManagement>
 
 ```
+
+**设置私服依赖下载的仓库组地址（settings.xml中的mirrors、profiles中配置）**
 
 ```xml
-<!--index.wxml-->
-<navigation-bar title="Weixin" back="{{false}}" color="black" background="#FFF"></navigation-bar>
-<scroll-view class="scrollarea" scroll-y type="list">
-  <view class="container">
-    <view>{{msg}}</view>
-    <view>
-    <button bindtap="getUserInfo" type="primary">获取用户信息</button>
-    </view>
-  </view>
-</scroll-view>
-
+<mirror>
+   <id>maven-public</id>
+   <mirrorOf>*</mirrorOf>
+   <url>http://192.168.150.101:8081/repository/maven-public/</url>
+</mirror>
 ```
 
-## 将获取的数据传给data
-
-```javascript
-// index.js
-Page({
-  data:{
-    msg:'hello world',
-    nickName:''
-  },
-  //获取威信用户的头像和名称
-  getUserInfo(){
-    wx.getUserProfile({
-      desc: '获取用户信息',
-      success: (res)=>{
-        console.log(res.userInfo);
-        //为数据赋值
-        this.setData({
-          nickName: res.userInfo.nickName
-        })
-      }
-    })
-  }
-})
-
-```
+**需要在 profiles 中，增加如下配置，来指定snapshot快照版本的依赖，依然允许使用**
 
 ```xml
-<!--index.wxml-->
-<navigation-bar title="Weixin" back="{{false}}" color="black" background="#FFF"></navigation-bar>
-<scroll-view class="scrollarea" scroll-y type="list">
-  <view class="container">
-    <view>{{msg}}</view>
-    <view>
-      <button bindtap="getUserInfo" type="primary">获取用户信息</button>
-      昵称:{{nickName}}
-    </view>
-  </view>
-</scroll-view>
-
+<profile>
+    <id>allow-snapshots</id>
+        <activation>
+         <activeByDefault>true</activeByDefault>
+        </activation>
+    <repositories>
+        <repository>
+            <id>maven-public</id>
+            <url>http://192.168.150.101:8081/repository/maven-public/</url>
+            <releases>
+             <enabled>true</enabled>
+            </releases>
+            <snapshots>
+             <enabled>true</enabled>
+            </snapshots>
+        </repository>
+    </repositories>
+</profile>
 ```
 
-## 获取微信用户的授权码
+
+
+如果需要上传自己的项目到私服上，需要在项目的pom.xml文件中，增加如下配置，来配置项目发布的地址(也就是私服的地址)
 
 ```xml
-<!--index.wxml-->
-<navigation-bar title="Weixin" back="{{false}}" color="black" background="#FFF"></navigation-bar>
-<scroll-view class="scrollarea" scroll-y type="list">
-  <view class="container">
-    <view>{{msg}}</view>
-    <view>
-      <button bindtap="getUserInfo" type="primary">获取用户信息</button>
-      昵称:{{nickName}}
-    </view>
-    <view>
-      <button type="warn" bindtap="wxLogin">微信登录</button>
-      授权码：{{code}}
-    </view>
-  </view>
-</scroll-view>
-
-```
-
-```javascript
-// index.js
-Page({
-  data:{
-    msg:'hello world',
-    nickName:'',
-    code:''
-  },
-  //获取威信用户的头像和名称
-  getUserInfo(){
-    wx.getUserProfile({
-      desc: '获取用户信息',
-      success: (res)=>{
-        console.log(res.userInfo);
-        //为数据赋值
-        this.setData({
-          nickName: res.userInfo.nickName
-        })
-      }
-    })
-  },
-
-  //微信登录，获取微信用户的授权码
-  wxLogin(){
-    wx.login({
-      success: (res) => {
-        console.log(res.code)
-        this.setData({
-          code: res.code
-        })
-      }
-    })
-  }
-})
-
-```
-
-## 给后端发送请求
-
-```javascript
-// index.js
-Page({
-  data:{
-    msg:'hello world',
-    nickName:'',
-    code:''
-  },
-  //获取威信用户的头像和名称
-  getUserInfo(){
-    wx.getUserProfile({
-      desc: '获取用户信息',
-      success: (res)=>{
-        console.log(res.userInfo);
-        //为数据赋值
-        this.setData({
-          nickName: res.userInfo.nickName
-        })
-      }
-    })
-  },
-
-  //微信登录，获取微信用户的授权码
-  wxLogin(){
-    wx.login({
-      success: (res) => {
-        console.log(res.code)
-        this.setData({
-          code: res.code
-        })
-      }
-    })
-  },
-
-  sendRequest(){
-    wx.request({
-      url: 'http://localhost:8080/user/shop/status',
-      method:'GET',
-      success:(res)=>{
-        console.log(res.data)
-      }
-    })
-  }
-})
-
-```
-
-```xml
-<!--index.wxml-->
-<navigation-bar title="Weixin" back="{{false}}" color="black" background="#FFF"></navigation-bar>
-<scroll-view class="scrollarea" scroll-y type="list">
-  <view class="container">
-    <view>{{msg}}</view>
-    <view>
-      <button bindtap="getUserInfo" type="primary">获取用户信息</button>
-      昵称:{{nickName}}
-    </view>
-    <view>
-      <button type="warn" bindtap="wxLogin">微信登录</button>
-      授权码：{{code}}
-    </view>
-    <view>
-      <button type = "default" bindtap="sendRequest">发送请求</button>
-    </view>
-  </view>
-</scroll-view>
-
-```
-
-## 登录流程时序
-
-![](assets\api-login.jpg)
-
-**说明**
-
-1. 调用 [wx.login()](https://developers.weixin.qq.com/miniprogram/dev/api/open-api/login/wx.login.html) 获取 **临时登录凭证code** ，并回传到开发者服务器。
-2. 调用 [auth.code2Session](https://developers.weixin.qq.com/miniprogram/dev/OpenApiDoc/user-login/code2Session.html) 接口，换取 **用户唯一标识 OpenID** 、 用户在微信开放平台账号下的**唯一标识UnionID**（若当前小程序已绑定到微信开放平台账号） 和 **会话密钥 session_key**。
-
-之后开发者服务器可以根据用户标识来生成自定义登录态，用于后续业务逻辑中前后端交互时识别用户身份。
-
-**注意事项**
-
-1. 会话密钥 `session_key` 是对用户数据进行 [加密签名](https://developers.weixin.qq.com/miniprogram/dev/framework/open-ability/signature.html) 的密钥。为了应用自身的数据安全，开发者服务器**不应该把会话密钥下发到小程序，也不应该对外提供这个密钥**。
-2. 临时登录凭证 code 只能使用一次
-
-**访问code2Session**
-
-**请求方式：get**
-
-**请求路径：https://api.weixin.qq.com/sns/jscode2session**
-
-**请求参数**
-
-| 属性       | 类型   | 必填 | 说明                                                         |
-| :--------- | :----- | :--- | :----------------------------------------------------------- |
-| appid      | string | 是   | 小程序 appId                                                 |
-| secret     | string | 是   | 小程序 appSecret                                             |
-| js_code    | string | 是   | 登录时获取的 code，可通过[wx.login](https://developers.weixin.qq.com/miniprogram/dev/api/open-api/login/wx.login.html)获取 |
-| grant_type | string | 是   | 授权类型，此处只需填写 authorization_code                    |
-
-**返回参数**
-
-| 属性        | 类型   | 说明                                                         |
-| :---------- | :----- | :----------------------------------------------------------- |
-| session_key | string | 会话密钥                                                     |
-| unionid     | string | 用户在开放平台的唯一标识符，若当前小程序已绑定到微信开放平台账号下会返回，详见 [UnionID 机制说明](https://developers.weixin.qq.com/miniprogram/dev/framework/open-ability/union-id.html)。 |
-| errmsg      | string | 错误信息                                                     |
-| openid      | string | 用户唯一标识                                                 |
-| errcode     | int32  | 错误码                                                       |
-
-## 微信支付
-
-![](assets\image-20241021224342821.png)
-
-**详细接口文档：https://pay.weixin.qq.com/doc/v3/merchant/4012525110**
-
-**相关maven坐标**
-
-```xml
-<!--微信支付-->
-<dependency>
-    <groupId>com.github.wechatpay-apiv3</groupId>
-    <artifactId>wechatpay-apache-httpclient</artifactId>
-    <version>0.4.8</version>
-</dependency>
+<distributionManagement>
+    <!-- release版本的发布地址 -->
+    <repository>
+        <id>maven-releases</id>
+        <url>http://192.168.150.101:8081/repository/maven-releases/</url>
+    </repository>
+    
+    <!-- snapshot版本的发布地址 -->
+    <snapshotRepository>
+        <id>maven-snapshots</id>
+        <url>http://192.168.150.101:8081/repository/maven-snapshots/</url>
+    </snapshotRepository>
+</distributionManagement>
 ```
 
 
 
-# 
+
+
+
+
+# Git
+
+## 常用操作
+
+**定义：分布式版本控制系统**
+
+**工作流程：工作区--->提交代码至暂存区--->本地库（历史版本）--->远程库**
+
+**常用命令**
+
+| 命令名称                             | 作用                              |
+| ------------------------------------ | --------------------------------- |
+| git config --global user.name 用户名 | 设置用户签名                      |
+| git config --global user.email 邮箱  | 设置用户签名                      |
+| git init                             | 初始化本地库                      |
+| git status                           | 查看本地库状态                    |
+| git add 文件名                       | 添加到暂存区                      |
+| git commit -m "日志信息" 文件名      | 提交到本地库                      |
+| git reflog                           | 查看历史记录,可以查看提交过的版本 |
+| git reset --hard 版本号              | 版本                              |
+
+## 分支
+
+**定义：在版本控制过程中，同时推进多个任务，为每个任务，我们就可以创建每个任务的单独分支，使用分支也就意味着程序员可以把自己的工作从开发主线上分离开来，开发自己分支的时候，不会影响主线分支的运行**
+
+**常用命令**
+
+| 命令名称            | 作用                                                        |
+| ------------------- | ----------------------------------------------------------- |
+| git branch 分支名   | 创建分支,创建分支后会把原分支上的内容复制一份提交到新分支上 |
+| git branch -v       | 查看分支                                                    |
+| git checkout 分支名 | 切换分支                                                    |
+| git merge 分支名    | 把指定的分支合并到当前分支上                                |
+
+![](D:\StudyNote\assets\08f2e6f2dcd2a9cf36a4a21b07b9a3a5.png)
+
+**上述情况就会出现合并冲突的问题**
+
+**遇到合并冲突时的代码提交步骤：**
+
+**1：人为修改合并代码**
+
+**2：添加到暂存区 `git add  文件名`**
+
+**3：执行提交，此时提交不要带文件名，`git commit -m "日志信息"`**
+
+## 远程仓库操作
+
+| 命令                               | 说明                                                     |
+| ---------------------------------- | -------------------------------------------------------- |
+| git remote -v                      | 查看当前所有远程地址别名                                 |
+| git remote add 别名 远程地址       | 起别名                                                   |
+| git push 别名 分支                 | 推送本地分支上的内容到远程仓库                           |
+| git clone 远程地址                 | 将远程仓库的内容克隆到本地                               |
+| git pull 远程库地址别名 远程分支名 | 将远程仓库对于分支最新内容拉下来后与当前本地分支直接合并 |
+
+# Docker
+
+**快速构建，运行，管理应用的工具**
+
+
 
