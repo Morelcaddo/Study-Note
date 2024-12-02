@@ -8143,6 +8143,75 @@ public class CommosLogging {
 
 
 
+# Spring cloud
+
+**Spring cloud是目前国内使用最广泛的微服务框架，它集成了各种微服务功能组件，并基于spring boot实现了这些组件的自动装配，从而提供良好的用户体验**
+
+## 服务拆分原则
+
+**什么时候拆分**
+
+**创业项目：先采用单体架构，快速开发，快速试错，随着规模扩大，逐渐拆分**
+
+**确定的大型项目：资金充足，目标明确，可以直接选择微服务架构，避免后续拆分的麻烦**
+
+**高内聚：每个服务要尽量做到职责单一，包含的业务相关联高，完整度高**
+
+**低耦合：每个微服务的功能要相对独立，尽量减少对其他服务的依赖**
+
+**纵向拆分：按照业务模块拆分**
+
+**横向拆分：抽取公共服务，提高复用性**
+
+**工程结构：分为两种，一种是独立的project,一种是maven聚合**
+
+## 远程调用
+
+**spring给我们提供了一个RestTemplate工具，可以方便的实现http请求的发送，使用步骤如下：**
+
+**1：注入RestTemplate到spring容器**
+
+```java
+@Configuration
+public class RestTemplateConfig {
+
+    @Bean
+    public RestTemplateConfig restTemplateConfig() {
+        return new RestTemplateConfig();
+    }
+}
+```
+
+**2：发起远程调用**
+
+```java
+//利用RestTemplate发起http请求，获取http请求
+ResponseEntity<List<ItemDTO>> response = restTemplate.exchange(
+        "http://localhost:8081/items?ids={ids}", //请求路径
+        HttpMethod.GET, //请求方式
+        null,           //请求实体
+        new ParameterizedTypeReference<List<ItemDTO>>() {
+        },  //返回值类型,这里因为返回值的List<ItemDTO>,所以使用这种方式传入
+        Map.of("ids", CollUtil.join(itemIds, ","))         //请求参数
+);
+if(!response.getStatusCode().is2xxSuccessful()){
+    //响应失败直接结束
+    return;
+}
+//解析响应
+List<ItemDTO> items = response.getBody();
+```
+
+
+
+
+
+
+
+
+
+
+
 
 
 # Mybatis
