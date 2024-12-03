@@ -4891,12 +4891,14 @@ public class DeptController {
 
 **为Controller层，Service层注入运行时所依赖的对象，只需要在对应的成员变量上加@Autowired注解**
 
-| 注解         | 说明                 | 位置                     |
-| ------------ | -------------------- | ------------------------ |
-| @Component   | 申明bean的基础注解   | 不属于以下三类时用此注解 |
-| @Controller  | @Component的衍生注解 | 标注在控制器类上         |
-| @Service     | @Component的衍生注解 | 标注在业务类上           |
-| @Respository | @Component的衍生注解 | 标注在数据访问类上       |
+| 注解         | 说明                 | 位置                                                         |
+| ------------ | -------------------- | ------------------------------------------------------------ |
+| @Component   | 申明bean的基础注解   | 不属于以下三类时用此注解                                     |
+| @Controller  | @Component的衍生注解 | 标注在控制器类上                                             |
+| @Service     | @Component的衍生注解 | 标注在业务类上                                               |
+| @Respository | @Component的衍生注解 | 标注在数据访问类上                                           |
+| @Mapper      | Mybatis的注解        | 标注在数据访问类Mapper上                                     |
+| @MapperScan  | Spring的注解         | 标注在spring的启动类上，@MapperScan("com.hmall.mapper")，使用该注解扫描对应的mapper包，则可给这个包下的所有mapper进行依赖注入 |
 
 **申明bean的时候，可以通过value属性来指定bean的名字，没有，则默认为类名首字母小写后的名字**
 
@@ -8202,19 +8204,117 @@ if(!response.getStatusCode().is2xxSuccessful()){
 List<ItemDTO> items = response.getBody();
 ```
 
+## 服务治理
+
+### 服务远程调用时存在的问题
+
+**假如商品微服务被调用较多，为了应对更高的并发，我们进行了多实例部署，如图：**
+
+![](assets\1733225733595.png)
+
+**此时，每个`item-service`的实例其IP或端口不同，问题来了：**
+
+- **item-service这么多实例，cart-service如何知道每一个实例的地址？**
+- **http请求要写url地址，`cart-service`服务到底该调用哪个实例呢？**
+- **如果在运行过程中，某一个`item-service`实例宕机，`cart-service`依然在调用该怎么办？**
+- **如果并发太高，`item-service`临时多部署了N台实例，`cart-service`如何知道新实例的地址？**
+
+**为了解决上述问题，就必须引入注册中心的概念了，接下来我们就一起来分析下注册中心的原理。**
+
+### 注册中心
+
+**在微服务远程调用的过程中，包括两个角色：**
+
+- **服务提供者：提供接口供其它微服务访问，比如`item-service`**
+- **服务消费者：调用其它微服务提供的接口，比如`cart-service`**
+
+**在大型微服务项目中，服务提供者的数量会非常多，为了管理这些服务就引入了注册中心的概念。注册中心、服务提供者、服务消费者三者间关系如下**
+
+![](assets\1733226355828.png)
 
 
 
+**流程如下：**
+
+- **服务启动时就会注册自己的服务信息（服务名、IP、端口）到注册中心**
+- **调用者可以从注册中心订阅想要的服务，获取服务对应的实例列表（1个服务可能多实例部署）**
+- **调用者自己对实例列表负载均衡，挑选一个实例**
+- **调用者向该实例发起远程调用**
+
+**当服务提供者的实例宕机或者启动新实例时，调用者如何得知呢？**
+
+- **服务提供者会定期向注册中心发送请求，报告自己的健康状态（心跳请求）**
+- **当注册中心长时间收不到提供者的心跳时，会认为该实例宕机，将其从服务的实例列表中剔除**
+- **当服务有新实例启动时，会发送注册服务请求，其信息会被记录在注册中心的服务实例列表**
+- **当注册中心服务列表变更时，会主动通知微服务，更新本地服务列表**
+
+### Nacos
+
+**目前开源的注册中心框架有很多，国内比较常见的有：**
+
+- **Eureka：Netflix公司出品，目前被集成在SpringCloud当中，一般用于Java应用**
+- **Nacos：Alibaba公司出品，目前被集成在SpringCloudAlibaba中，一般用于Java应用**
+- **Consul：HashiCorp公司出品，目前集成在SpringCloud中，不限制微服务语言**
+
+**我们基于Docker来部署Nacos的注册中心，首先我们要准备MySQL数据库表，用来存储Nacos的数据。由于是Docker部署，所以大家需要将资料中的SQL文件导入到你Docker中的MySQL容器中**
+
+**找到`nacos/custom.env`文件中，有一个MYSQL_SERVICE_HOST也就是mysql地址，需要修改为你自己的虚拟机IP地址：**
+
+![](assets\1733226946038.png)
+
+**然后，将`nacos`目录上传至虚拟机的`/root`目录。**
+
+**进入root目录，然后执行下面的docker命令：**
+
+```PowerShell
+docker run -d \
+--name nacos \
+--env-file ./nacos/custom.env \
+-p 8848:8848 \
+-p 9848:9848 \
+-p 9849:9849 \
+--restart=always \
+nacos/nacos-server:v2.1.0-slim
+```
+
+### 服务注册
+
+**1：引入nacos discovery依赖**
+
+```XML
+<!--nacos 服务注册发现-->
+<dependency>
+    <groupId>com.alibaba.cloud</groupId>
+    <artifactId>spring-cloud-starter-alibaba-nacos-discovery</artifactId>
+</dependency>
+```
+
+**2：配置nacos地址**
+
+**在`item-service`的`application.yml`中添加nacos地址配置：**
+
+```yaml
+spring:
+  application:
+    name: item-service # 服务名称
+  cloud:
+    nacos:
+      server-addr: 192.168.150.101:8848 # nacos地址
+```
+
+**此时就完成了服务注册**
+
+### 服务发现
+
+**消费者需要连接nacos以取消拉取和订阅服务，因此前两步与服务注册一致，后面加上服务调用即可**
+
+**3：服务发现**
+
+![](assets\1733230912421.png)
 
 
 
-
-
-
-
-
-
-# Mybatis
+# Mybatis	
 
 ## 入门
 
