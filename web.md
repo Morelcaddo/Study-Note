@@ -8312,6 +8312,121 @@ spring:
 
 ![](assets\1733230912421.png)
 
+## OpenFeign
+
+**OpenFeign是一个声明式的htpp客户端，是spring cloud在Eureka公司开源的Feign基础上改造而来，其作用就是基于spring mvc的常见注解帮我们实现http请求**
+
+**快速入门**
+
+**引入依赖，包括OpenFeign和负载均衡组件spring cloudLoadBalancer**
+
+```XML
+  <!--openFeign-->
+  <dependency>
+      <groupId>org.springframework.cloud</groupId>
+      <artifactId>spring-cloud-starter-openfeign</artifactId>
+  </dependency>
+  <!--负载均衡器-->
+  <dependency>
+      <groupId>org.springframework.cloud</groupId>
+      <artifactId>spring-cloud-starter-loadbalancer</artifactId>
+  </dependency>
+```
+
+**通过@EnableFeignClients注解，启动OpenFeign服务，只需要加到SpringBoot启动类即可**
+
+```
+@MapperScan("com.hmall.cart.mapper")
+@SpringBootApplication
+@EnableFeignClients
+public class CartApplication {
+    public static void main(String[] args) {
+        SpringApplication.run(CartApplication.class, args);
+    }
+}
+```
+
+**编写FeignClient**
+
+```
+@FeignClient("item-service")
+public interface ItemClient {
+    @GetMapping("/items")
+    List<ItemDTO> queryItemByIds(@RequestParam("ids") Collection<Long> ids);
+
+}
+```
+
+**调用FeignClient接口里的方法**
+
+```java
+List<ItemDTO> items = itemClient.queryItemByIds(itemIds);
+```
+
+### 连接池
+
+**OpenFeign对http请求做了封装，不过其底层发起http请i去，依赖于其他框架，这些框架可以自己选择，包括以下三种：**
+
+**HttpURLConnection：默认连接，不支持连接池**
+
+**Apache HttpClient:支持连接池**
+
+**OKHttp：支持连接池**
+
+**为了提高性能，建议使用连接池**
+
+**以下以OKHttp为例做演示**
+
+**依赖引入**
+
+```XML
+<!--OK http 的依赖 -->
+<dependency>
+  <groupId>io.github.openfeign</groupId>
+  <artifactId>feign-okhttp</artifactId>
+</dependency>
+```
+
+**开启连接池功能：**
+
+**在`cart-service`的`application.yml`配置文件中开启Feign的连接池功能：**
+
+```YAML
+feign:
+  okhttp:
+    enabled: true # 开启OKHttp功能
+```
+
+**重启服务，连接池就生效了。**
+
+### 最佳实践
+
+**如果拆分了交易微服务（`trade-service`），它也需要远程调用`item-service`中的根据id批量查询商品功能。这个需求与`cart-service`中是一样的。**
+
+**因此，我们就需要在`trade-service`中再次定义`ItemClient`接口，这不是重复编码吗？ 有什么办法能加避免重复编码呢？**
+
+**思路1：抽取到微服务之外的公共module**
+
+**思路2：每个微服务自己抽取一个module**
+
+![](assets\1733409117740.png)
+
+**方案1抽取更加简单，工程结构也比较清晰，但缺点是整个项目耦合度偏高。**
+
+**方案2抽取相对麻烦，工程结构相对更复杂，但服务之间耦合度降低。**
+
+**以下我们采用方案1进行拆分**
+
+**在拆分后会存在无法为ItemClient创建bean的问题，这是因为扫描包的问题导致的，有以下两种解决方案可以解决问题**
+
+```
+@EnableFeignClients(basePackages = "com.hmall.api.client")
+```
+
+```
+@EnableFeignClients(clients = {ItemClient.class})
+```
+
 
 
 # Mybatis	
