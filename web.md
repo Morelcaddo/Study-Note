@@ -8427,6 +8427,44 @@ feign:
 @EnableFeignClients(clients = {ItemClient.class})
 ```
 
+### 日志输出
+
+**OpenFeign只会在FeignClient所在包的日志级别为DEBUG时，才会输出日志。而且其日志级别有4级：**
+
+- **NONE：不记录任何日志信息，这是默认值。**
+- **BASIC：仅记录请求的方法，URL以及响应状态码和执行时间**
+- **HEADERS：在BASIC的基础上，额外记录了请求和响应的头信息**
+- **FULL：记录所有请求和响应的明细，包括头信息、请求体、元数据。**
+
+**Feign默认的日志级别就是NONE，所以默认我们看不到请求日志。**
+
+**新建一个配置类，定义Feign的日志级别：**
+
+```java
+import org.springframework.context.annotation.Bean;
+import feign.Logger;
+public class DefaultFeignConfig {
+    @Bean
+    public Logger.Level feignLogLevel(){
+        return Logger.Level.FULL;
+    }
+}
+```
+
+**接下来，要让日志级别生效，还需要配置这个类。有两种方式：**
+
+- **局部生效：在某个`FeignClient`中配置，只对当前`FeignClient`生效**
+
+```Java
+@FeignClient(value = "item-service", configuration = DefaultFeignConfig.class)
+```
+
+- **全局生效：在`@EnableFeignClients`中配置，针对所有`FeignClient`生效。**
+
+```Java
+@EnableFeignClients(defaultConfiguration = DefaultFeignConfig.class)
+```
+
 
 
 # Mybatis	
