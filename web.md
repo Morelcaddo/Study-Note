@@ -8365,7 +8365,7 @@ List<ItemDTO> items = itemClient.queryItemByIds(itemIds);
 
 ### 连接池
 
-**OpenFeign对http请求做了封装，不过其底层发起http请i去，依赖于其他框架，这些框架可以自己选择，包括以下三种：**
+**OpenFeign对http请求做了封装，不过其底层发起http请求，依赖于其他框架，这些框架可以自己选择，包括以下三种：**
 
 **HttpURLConnection：默认连接，不支持连接池**
 
@@ -8464,6 +8464,180 @@ public class DefaultFeignConfig {
 ```Java
 @EnableFeignClients(defaultConfiguration = DefaultFeignConfig.class)
 ```
+
+## 网关
+
+### 基本概念
+
+**网关：就是网络的关口，负责请求的路由，转发，身份校验**
+
+![](assets\1733972209479.png)
+
+**在spring cloud中网关的实现有两种:**
+
+**spring cloud gateway:spring 官方出品，基于webFlux响应式编程，无需调优即可获得优异性能**、
+
+**Netflix zuul:Netflix出品，基于servlet阻塞式编程，需要调优才能获得与springCloudGeteway一样的性能**
+
+### 快速入门
+
+**相关依赖引入**
+
+```XML
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <parent>
+        <artifactId>hmall</artifactId>
+        <groupId>com.heima</groupId>
+        <version>1.0.0</version>
+    </parent>
+    <modelVersion>4.0.0</modelVersion>
+
+    <artifactId>hm-gateway</artifactId>
+
+    <properties>
+        <maven.compiler.source>11</maven.compiler.source>
+        <maven.compiler.target>11</maven.compiler.target>
+    </properties>
+    <dependencies>
+        <!--common-->
+        <dependency>
+            <groupId>com.heima</groupId>
+            <artifactId>hm-common</artifactId>
+            <version>1.0.0</version>
+        </dependency>
+        <!--网关-->
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-gateway</artifactId>
+        </dependency>
+        <!--nacos discovery-->
+        <dependency>
+            <groupId>com.alibaba.cloud</groupId>
+            <artifactId>spring-cloud-starter-alibaba-nacos-discovery</artifactId>
+        </dependency>
+        <!--负载均衡-->
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-loadbalancer</artifactId>
+        </dependency>
+    </dependencies>
+    <build>
+        <finalName>${project.artifactId}</finalName>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
+</project>
+```
+
+**编写启动类**
+
+```Java
+package com.hmall.gateway;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+@SpringBootApplication
+public class GatewayApplication {
+    public static void main(String[] args) {
+        SpringApplication.run(GatewayApplication.class, args);
+    }
+}
+```
+
+**编写配置文件,以及配置路由**
+
+```yaml
+server:
+  port: 8080
+spring:
+  application:
+    name: gateway
+  cloud:
+    nacos:
+      server-addr: 192.168.230.130:8848
+    gateway:
+      routes:
+        - id: item # 路由规则id，自定义，唯一
+          uri: lb://item-service # 路由的目标服务，lb代表负载均衡，会从注册中心拉取服务列表,除了lb外还有ws(WebSocket)和http
+          predicates: # 路由断言，判断当前请求是否符合当前规则，符合则路由到目标服务
+            - Path=/items/**,/search/** # 这里是以请求路径作为判断规则
+        - id: cart
+          uri: lb://cart-service
+          predicates:
+            - Path=/carts/**
+        - id: user
+          uri: lb://user-service
+          predicates:
+            - Path=/users/**,/addresses/**
+        - id: trade
+          uri: lb://trade-service
+          predicates:
+            - Path=/orders/**
+        - id: pay
+          uri: lb://pay-service
+          predicates:
+            - Path=/pay-orders/**
+```
+
+### 路由属性
+
+**网关路由对应的java类型是RouteDefinition，其中常见的属性有：**
+
+**id:路由唯一标识**
+
+**url:路由目标地址**
+
+**predicates:路由断言，判断请求是否符合当前路由**
+
+**filter:路由过滤器，对请求响应作特殊处理**
+
+**这里我们重点关注`predicates`，也就是路由断言。SpringCloudGateway中支持的断言类型有很多：**
+
+| **名称**   | **说明**                       | **示例**                                                     |
+| :--------- | :----------------------------- | :----------------------------------------------------------- |
+| After      | 是某个时间点后的请求           | - After=2037-01-20T17:42:47.789-07:00[America/Denver]        |
+| Before     | 是某个时间点之前的请求         | - Before=2031-04-13T15:14:47.433+08:00[Asia/Shanghai]        |
+| Between    | 是某两个时间点之前的请求       | - Between=2037-01-20T17:42:47.789-07:00[America/Denver], 2037-01-21T17:42:47.789-07:00[America/Denver] |
+| Cookie     | 请求必须包含某些cookie         | - Cookie=chocolate, ch.p                                     |
+| Header     | 请求必须包含某些header         | - Header=X-Request-Id, \d+                                   |
+| Host       | 请求必须是访问某个host（域名） | - Host=**.somehost.org,**.anotherhost.org                    |
+| Method     | 请求方式必须是指定方式         | - Method=GET,POST                                            |
+| Path       | 请求路径必须符合指定规则       | - Path=/red/{segment},/blue/**                               |
+| Query      | 请求参数必须包含指定参数       | - Query=name, Jack或者- Query=name                           |
+| RemoteAddr | 请求者的ip必须是指定范围       | - RemoteAddr=192.168.1.1/24                                  |
+| weight     | 权重处理                       |                                                              |
+
+**路由（Route）过滤器（Filter）允许以某种方式修改传入的 HTTP 请求或传出的 HTTP 响应。路由过滤器的范围是一个特定的路由。Spring Cloud Gateway 包括许多内置的 `GatewayFilter` 工厂。详细见官方文档https://springdoc.cn/spring-cloud-gateway/#gatewayfilter-%E5%B7%A5%E5%8E%82**
+
+### 登录校验
+
+**登录校验必须在网关转发请求之前去做，否则就没有了意义，因此我们需要了解一下Gatewat的内部工作原理**
+
+![](assets\1734015962199.png)
+
+**如图所示：**
+
+**1：客户端请求进入网关后由`HandlerMapping`对请求做判断，找到与当前请求匹配的路由规则（`Route`），然后将请求交给`WebHandler`去处理。**
+
+**2：`WebHandler`则会加载当前路由下需要执行的过滤器链（`Filter chain`），然后按照顺序逐一执行过滤器（后面称为`Filter`）。**
+
+**3：图中`Filter`被虚线分为左右两部分，是因为`Filter`内部的逻辑分为`pre`和`post`两部分，分别会在请求路由到微服务之前和之后被执行。**
+
+**4：只有所有`Filter`的`pre`逻辑都依次顺序执行通过后，请求才会被路由到微服务。**
+
+**5：微服务返回结果后，再倒序执行`Filter`的`post`逻辑。**
+
+**6：最终把响应结果返回。**
+
+**如图中所示，最终请求转发是有一个名为`NettyRoutingFilter`的过滤器来执行的，而且这个过滤器是整个过滤器链中顺序最靠后的一个。如果我们能够定义一个过滤器，在其中实现登录校验逻辑，并且将过滤器执行顺序定义到**`NettyRoutingFilter`之前**，这就符合我们的需求了！**
 
 
 
