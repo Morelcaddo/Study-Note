@@ -2170,6 +2170,50 @@ let fn=()=>{}
 (function(形参){函数体}(实参));//两种方式必须加;
 ```
 
+### 回调函数
+
+**回调函数是一种在编程中常用的概念，它允许将一个函数作为参数传递给另一个函数，并在后者执行完毕后执行。这种机制让程序具有更大的灵活性和解耦能力。**
+
+**回调函数的工作原理**
+
+**在编程中，回调函数通常用于异步操作，例如网络请求或文件处理。当主函数需要执行一个可能耗时的操作时，它不会直接执行这个操作，而是将其作为回调函数传递给另一个处理函数。这样，主函数可以继续执行其他任务，而不必等待耗时操作完成。一旦耗时操作完成，回调函数就会被调用。**
+
+**例如，假设有一个函数*A*，它接受另一个函数*B*作为参数。当*A*执行完毕后，它会调用*B*。这里的*B*就是一个回调函数。在JavaScript中，这个过程可能看起来像这样：**
+
+```javascript
+// 定义主函数，回调函数作为参数
+function A(callback) {
+callback();
+console.log('我是主函数');
+}
+
+// 定义回调函数
+function B(){
+setTimeout("console.log('我是回调函数')", 3000); // 模仿耗时操作
+}
+
+// 调用主函数，将函数B传进去
+A(B);
+
+// 输出结果
+// 我是主函数
+// 我是回调函数
+```
+
+**在这个例子中，即使*B*函数模拟了一个耗时的操作（通过*setTimeout*），*A*函数也不会等待它完成就继续执行。这就是回调函数的一个关键特性：它允许程序继续运行，而不会被阻塞。**
+
+**回调函数的优势**
+
+**使用回调函数的主要优势是解耦。它允许将具体的操作从执行环境中分离出来，使得代码更加灵活和可重用。例如，在一个下载任务中，下载进度的更新可能需要通过回调函数来实现，因为下载模块不应该知道显示模块的具体实现细节。**
+
+**此外，回调函数还可以帮助处理异步操作，使得程序可以在等待某个操作完成时继续执行其他任务。这在处理网络请求或大型文件时尤其有用。**
+
+**回调函数的使用场景**
+
+**回调函数通常用于以下场景：**
+
+**异步操作，如网络请求或文件读写。事件处理，如用户界面中的按钮点击。定时器函数，如定时更新数据。**
+
 ## 对象（object）
 
 ### 对象使用
@@ -8619,6 +8663,8 @@ spring:
 
 ### 登录校验
 
+#### 基本概念
+
 **登录校验必须在网关转发请求之前去做，否则就没有了意义，因此我们需要了解一下Gatewat的内部工作原理**
 
 ![](assets\1734015962199.png)
@@ -8638,6 +8684,222 @@ spring:
 **6：最终把响应结果返回。**
 
 **如图中所示，最终请求转发是有一个名为`NettyRoutingFilter`的过滤器来执行的，而且这个过滤器是整个过滤器链中顺序最靠后的一个。如果我们能够定义一个过滤器，在其中实现登录校验逻辑，并且将过滤器执行顺序定义到**`NettyRoutingFilter`之前**，这就符合我们的需求了！**
+
+**网关和微服务之间的数据传递如何实现呢，这里可以把数据放到请求头里进行传递**
+
+**各微服务之间的数据传递如何实现，也可以把数据存到请求头里去实现**
+
+#### 自定义GlobalFilte
+
+**网关过滤器链中的过滤器有两种：**
+
+**GatewayFilter：路由过滤器，作用范围比较灵活，可以是任意指定的路由`Route`.** 
+
+**GlobalFilter`：全局过滤器，作用范围是所有路由，不可配置。**
+
+**注意：过滤器链之外还有一种过滤器，HttpHeadersFilter，用来处理传递到下游微服务的请求头。例如org.springframework.cloud.gateway.filter.headers.XForwardedHeadersFilter可以传递代理请求原本的host头到下游微服务**
+
+**其实`GatewayFilter`和`GlobalFilter`这两种过滤器的方法签名完全一致：**
+
+```Java
+/**
+
+ * 处理请求并将其传递给下一个过滤器
+ * @param exchange 当前请求的上下文，其中包含request、response等各种数据
+ * @param chain 过滤器链，基于它向下传递请求
+ * @return 根据返回值标记当前请求是否被完成或拦截，chain.filter(exchange)就放行了。
+ */
+Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain);
+```
+
+**入门案例**
+
+```java
+package com.hmall.gateway.filters;
+
+import org.springframework.cloud.gateway.filter.GatewayFilterChain;
+import org.springframework.cloud.gateway.filter.GlobalFilter;
+import org.springframework.core.Ordered;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.server.reactive.ServerHttpRequest;
+import org.springframework.stereotype.Component;
+import org.springframework.web.server.ServerWebExchange;
+import reactor.core.publisher.Mono;
+
+@Component
+public class MyGlobalFilter implements GlobalFilter, Ordered {
+
+    @Override
+    public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
+        // TODO 模拟登录校验的逻辑
+        ServerHttpRequest request = exchange.getRequest();
+        HttpHeaders headers = request.getHeaders();
+        System.out.println("Headers=" + headers);
+        //放行
+        return chain.filter(exchange);
+    }
+
+    //现在我们要把这个过滤器放入过滤器链，且优先级要在NettyRoutingFilter之前，
+    //只需要实现Ordered接口，并实现getOrder方法即可，改方法的返回值越小优先级越高。
+    //NettyRoutingFilter优先级最靠后值int的最大值，所以设置为0即可
+    @Override
+    public int getOrder() {
+        return 0;
+    }
+}
+```
+
+#### 自定义GatewayFilter
+
+**自定义`GatewayFilter`不是直接实现`GatewayFilter`，而是实现`AbstractGatewayFilterFactory`。最简单的方式是这样的：**
+
+```Java
+@Component
+public class PrintAnyGatewayFilterFactory extends AbstractGatewayFilterFactory<Object> {
+    @Override
+    public GatewayFilter apply(Object config) {
+        return new GatewayFilter() {
+            @Override
+            public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
+                // 获取请求
+                ServerHttpRequest request = exchange.getRequest();
+                // 编写过滤器逻辑
+                System.out.println("过滤器执行了");
+                // 放行
+                return chain.filter(exchange);
+            }
+        };
+    }
+}
+```
+
+**注意**：**该类的名称一定要以`GatewayFilterFactory`为后缀！**
+
+然后在yaml配置中这样使用：
+
+```YAML
+spring:
+  cloud:
+    gateway:
+      default-filters:
+            - PrintAny # 此处直接以自定义的GatewayFilterFactory类名称前缀类声明过滤器
+```
+
+**入门案例**
+
+```java
+package com.hmall.gateway.filters;
+
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.cloud.gateway.filter.GatewayFilter;
+import org.springframework.cloud.gateway.filter.GatewayFilterChain;
+import org.springframework.cloud.gateway.filter.OrderedGatewayFilter;
+import org.springframework.cloud.gateway.filter.factory.AbstractGatewayFilterFactory;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.server.reactive.ServerHttpRequest;
+import org.springframework.stereotype.Component;
+import org.springframework.web.server.ServerWebExchange;
+import reactor.core.publisher.Mono;
+
+@Component
+@Slf4j
+public class PrintAnyGatewayFilterFactory extends AbstractGatewayFilterFactory<Object> {
+
+    @Override
+    public GatewayFilter apply(Object config) {
+        return new OrderedGatewayFilter(new GatewayFilter() {
+            @Override
+            public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
+                // TODO 模拟登录校验的逻辑
+                ServerHttpRequest request = exchange.getRequest();
+                HttpHeaders headers = request.getHeaders();
+                log.info("Headers=" + headers);
+                return chain.filter(exchange);
+            }
+        }, 1);
+    }
+}
+```
+
+**注意：与上面的写法不同，为了给这个filter定义优先级，我们需要return new OrderedGatewayFilter(),这个类的第二个参数就是这个filter的优先级**
+
+**另外，这种过滤器还可以支持动态配置参数，不过实现起来比较复杂，示例：**
+
+```Java
+@Component
+public class PrintAnyGatewayFilterFactory // 父类泛型是内部类的Config类型
+                extends AbstractGatewayFilterFactory<PrintAnyGatewayFilterFactory.Config> {
+
+    @Override
+    public GatewayFilter apply(Config config) {
+        // OrderedGatewayFilter是GatewayFilter的子类，包含两个参数：
+        // - GatewayFilter：过滤器
+        // - int order值：值越小，过滤器执行优先级越高
+        return new OrderedGatewayFilter(new GatewayFilter() {
+            @Override
+            public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
+                // 获取config值
+                String a = config.getA();
+                String b = config.getB();
+                String c = config.getC();
+                // 编写过滤器逻辑
+                System.out.println("a = " + a);
+                System.out.println("b = " + b);
+                System.out.println("c = " + c);
+                // 放行
+                return chain.filter(exchange);
+            }
+        }, 100);
+    }
+
+    // 自定义配置属性，成员变量名称很重要，下面会用到
+    @Data
+    static class Config{
+        private String a;
+        private String b;
+        private String c;
+    }
+    // 将变量名称依次返回，顺序很重要，将来读取参数时需要按顺序获取
+    @Override
+    public List<String> shortcutFieldOrder() {
+        return List.of("a", "b", "c");
+    }
+        // 返回当前配置类的类型，也就是内部的Config
+    @Override
+    public Class<Config> getConfigClass() {
+        return Config.class;
+    }
+
+}
+```
+
+**然后在yaml文件中使用：**
+
+```YAML
+spring:
+  cloud:
+    gateway:
+      default-filters:
+            - PrintAny=1,2,3 # 注意，这里多个参数以","隔开，将来会按照shortcutFieldOrder()方法返回的参数顺序依次复制
+```
+
+**上面这种配置方式参数必须严格按照shortcutFieldOrder()方法的返回参数名顺序来赋值。**
+
+**还有一种用法，无需按照这个顺序，就是手动指定参数名：**
+
+```YAML
+spring:
+  cloud:
+    gateway:
+      default-filters:
+            - name: PrintAny
+              args: # 手动指定参数名，无需按照参数顺序
+                a: 1
+                b: 2
+                c: 3
+```
+
+
 
 
 
