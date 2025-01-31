@@ -8509,6 +8509,56 @@ public class DefaultFeignConfig {
 @EnableFeignClients(defaultConfiguration = DefaultFeignConfig.class)
 ```
 
+### 微服务间的信息传输
+
+**微服务之间调用是基于OpenFeign来实现的，并不是我们自己发送的请求。我们如何才能让每一个由OpenFeign发起的请求自动携带登录用户信息呢？**
+
+**这里要借助Feign中提供的一个拦截器接口：`feign.RequestInterceptor`**
+
+```Java
+public interface RequestInterceptor {
+
+  /**
+   * Called for every request. 
+   * Add data using methods on the supplied {@link RequestTemplate}.
+   */
+  void apply(RequestTemplate template);
+}
+```
+
+**我们只需要实现这个接口，然后实现apply方法，利用`RequestTemplate`类来添加请求头，将用户信息保存到请求头中。这样以来，每次OpenFeign发起请求的时候都会调用该方法，传递用户信息**
+
+**这里我们可以在OpenFeign的配置类里书写**
+
+```
+package com.hmall.common.config;
+
+import com.hmall.common.utils.UserContext;
+import feign.RequestInterceptor;
+import feign.RequestTemplate;
+import org.springframework.context.annotation.Bean;
+import feign.Logger;
+public class DefaultFeignConfig {
+    @Bean
+    public Logger.Level feignLogLevel(){
+        return Logger.Level.FULL;
+    }
+
+
+    @Bean
+    public RequestInterceptor userInfoRequestInterceptor(){
+        return requestTemplate -> {
+            Long userId = UserContext.getUser();
+            if(userId != null){
+                requestTemplate.header("user-info", userId.toString());
+            }
+
+        };
+    }
+
+}
+```
+
 ## 网关
 
 ### 基本概念
@@ -8900,6 +8950,190 @@ spring:
 ```
 
 
+
+### 网关与微服务间传递用户信息
+
+![](assets\1738307351858(1).png)
+
+**如何修改网关发送到下游微服务的请求，把用户信息存储到请求头，这就需要用到ServerWenExchange类提供的api，示例如下**
+
+```
+exchange.mutate()
+.request(builder -> builder.header("user-info", userInfo))
+.build();
+
+```
+
+**接下来，我们只需要编写拦截器，获取用户信息并保存到`UserContext`，然后放行即可。**
+
+**由于每个微服务都有获取登录用户的需求，因此拦截器我们直接写在`hm-common`中，并写好自动装配。这样微服务只需要引入`hm-common`就可以直接具备拦截器功能，无需重复编写。**
+
+**我们在`hm-common`模块下定义一个拦截器：**
+
+```java
+package com.hmall.common.interceptors;
+
+import cn.hutool.core.util.StrUtil;
+import com.hmall.common.utils.UserContext;
+import org.springframework.web.servlet.HandlerInterceptor;
+
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+
+public class UserInfoInterceptor implements HandlerInterceptor {
+    @Override
+    public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
+        //1：获取用户登录信息
+        String userInfo = request.getHeader("user-info");
+
+        //2:判断是否获取了用户，如果有，存入到ThreadLocal
+        if(StrUtil.isNotBlank(userInfo)){
+            UserContext.setUser(Long.valueOf(userInfo));
+        }
+        return true;
+    }
+
+    @Override
+    public void afterCompletion(HttpServletRequest request, HttpServletResponse response, Object handler, Exception ex) throws Exception {
+        UserContext.removeUser();
+    }
+}
+```
+
+
+
+**拦截写好后，我们就需要编写SpringMvc的配置类来配置拦截器**
+
+```java
+package com.hmall.common.config;
+
+import com.hmall.common.interceptors.UserInfoInterceptor;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.web.servlet.DispatcherServlet;
+import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
+import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
+
+
+@Configuration
+@ConditionalOnClass(DispatcherServlet.class)
+public class MvcConfig implements WebMvcConfigurer {
+    @Override
+    public void addInterceptors(InterceptorRegistry registry) {
+        registry.addInterceptor(new UserInfoInterceptor());
+    }
+}
+```
+
+
+
+**当然，即使我们已经编写好了相应的配置类，也还需要在hm-common包下的MATA-INF里spring.factories文件里配置该配置类的路径，具体内容详见spring boot的自动装配相关内容**
+
+```
+org.springframework.boot.autoconfigure.EnableAutoConfiguration=\
+  com.hmall.common.config.MyBatisConfig,\
+  com.hmall.common.config.MvcConfig,\
+  com.hmall.common.config.JsonConfig
+```
+
+
+
+**当然，这样写有一个小bug，就是在网关中也依赖了hm-common这个包，但是网关所用到的拦截技术是webFlux，而不是mvc相关的技术，也就是说网关并没有依赖mvc相关的东西，但是又因为依赖了hm-common，导致它间接拥有了我们刚刚配置的拦截器相关的东西，而这些东西又需要mvc相关的依赖，这就导致网关依赖的hm-common的拦截器缺少了mvc依赖，因此报错，也解决这个问题，只需要使用我们在自动装配原理时所学到@ConditionOnClass()注解，这样该配置就有了条件判断生效的效果，当具有这个DispatcherServlet这个类时，这个配置类才会生效，而这个类就是mvc的核心类了**
+
+
+
+**当然这里有一个解释有点怪，就是明明网关已经依赖了hm-common,而hm-common又依赖了mvc相关的依赖，根据依赖传递，网关也应当依赖了mvc的相关依赖，关于这个问题，可能是加了特定条件，使得网关屏蔽了该依赖**
+
+
+
+
+
+### 完整的用户校验功能实现
+
+```
+@Component
+@RequiredArgsConstructor
+public class AuthGlobalFilter implements GlobalFilter, Ordered {
+    private final AuthProperties authProperties;
+    private final JwtTool jwtTool;
+    //用于匹配带通配符的路径
+    private final AntPathMatcher antPathMatcher = new AntPathMatcher();
+    @Override
+    public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
+        //1:获取request
+        ServerHttpRequest request = exchange.getRequest();
+        //2:判断是否需要登录拦截
+        if(isExclude(request.getPath().toString())){
+            return chain.filter((exchange));
+        }
+        //3：获取token
+        String token = null;
+        List<String> headers =  request.getHeaders().get("authorization");
+        if(headers != null && !headers.isEmpty()){
+            token = headers.get(0);
+        }
+
+        Long userId = null;
+        //4:检验并解析token
+        try{
+            userId = jwtTool.parseToken(token);
+        }catch(UnauthorizedException e){
+            //获取相应，并修改响应的状态码
+            ServerHttpResponse response = exchange.getResponse();
+            response.setStatusCode(HttpStatus.UNAUTHORIZED);
+            //可以直接返回响应，实现拦截
+            return response.setComplete();
+        }
+
+
+
+        //5:传递用户信息
+        String userInfo = userId.toString();
+        ServerWebExchange swe = exchange.mutate()
+                .request(builder -> builder.header("user-info",userInfo))
+                .build();
+        
+        //6:放行
+        return chain.filter((swe));
+    }
+
+    @Override
+    public int getOrder() {
+        return 0;
+    }
+
+    private boolean isExclude(String path){
+        for (String excludePath : authProperties.getExcludePaths()) {
+            if(antPathMatcher.match(excludePath,path)){
+                return true;
+            }
+        }
+        return false;
+    }
+}
+```
+
+## 配置管理
+
+### 配置管理的引入
+
+**不过，现在依然还有几个问题需要解决：**
+
+​	**网关路由在配置文件中写死了，如果变更必须重启微服务**
+
+​	**某些业务配置在配置文件中写死了，每次修改都要重启服务**
+
+​	**每个微服务都有很多重复的配置，维护成本高**
+
+**这些问题都可以通过统一的配置管理器服务解决。而Nacos不仅仅具备注册中心功能，也具备配置管理的功能：**
+
+![](assets\1738336633645.png)
+
+**微服务共享的配置可以统一交给Nacos保存和管理，在Nacos控制台修改配置后，Nacos会将配置变更推送给相关的微服务，并且无需重启即可生效，实现配置热更新。**
+
+**网关的路由同样是配置，因此同样可以基于这个功能实现动态路由功能，无需重启网关即可修改路由配置。**
+
+### 配置共享
 
 
 
