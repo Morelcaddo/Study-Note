@@ -9604,6 +9604,336 @@ public class DynamicRouterLoader {
 
 **然后关于updateConfigInfo方法，我们使用RouteDefinitionWriter进行修改**
 
+
+
+## 服务保护和分布式事务
+
+### 雪崩问题
+
+**微服务调用链路中的某个服务故障，引起整个链路中的所有微服务都不可用，这就是雪崩**
+
+**产生原因：**
+
+**1：微服务相互调用，服务提供者出现故障或阻塞**
+
+**2：服务调用者没有做好异常处理，导致自身故障**
+
+**3：调用链中的所有服务级联失败，导致整个集群故障**
+
+**解决思路：**
+
+**1：尽可能避免出现故障或阻塞，保证代码的健壮性，保证网络畅通，能应对较高的并发请求**
+
+**2：服务调用者做好远程调用异常的备用方案 ，避免故障扩散**
+
+### 服务保护方案
+
+#### 请求限流
+
+**请求限流：限制访问微服务的请求的并发量，避免服务因流量激增出现故障**
+
+**服务故障最重要原因，就是并发太高！解决了这个问题，就能避免大部分故障。当然，接口的并发不是一直很高，而是突发的。因此请求限流，就是限制或控制接口访问的并发流量，避免服务因流量激增而出现故障。**
+
+**请求限流往往会有一个限流器，数量高低起伏的并发请求曲线，经过限流器就变的非常平稳。这就像是水电站的大坝，起到蓄水的作用，可以通过开关控制水流出的大小，让下游水流始终维持在一个平稳的量。**
+
+![](assets\1738658475627.png)
+
+#### 线程隔离
+
+**当一个业务接口响应时间长，而且并发高时，就可能耗尽服务器的线程资源，导致服务内的其它接口受到影响。所以我们必须把这种影响降低，或者缩减影响的范围。线程隔离正是解决这个问题的好办法。**
+
+**线程隔离：也叫做舱壁模式，模拟船舱隔板的防水原理，通过限定每个业务能使用的线程数量而将故障业务隔离，避免故障扩散**
+
+**线程隔离的思想来自轮船的舱壁模式：**
+
+![](assets\1738659804793.png)
+
+**轮船的船舱会被隔板分割为N个相互隔离的密闭舱，假如轮船触礁进水，只有损坏的部分密闭舱会进水，而其他舱由于相互隔离，并不会进水。这样就把进水控制在部分船体，避免了整个船舱进水而沉没。**
+
+**为了避免某个接口故障或压力过大导致整个服务不可用，我们可以限定每个接口可以使用的资源范围，也就是将其“隔离”起来。**
+
+![](assets\1738659927791(1).png)
+
+**如图所示，我们给查询购物车业务限定可用线程数量上限为20，这样即便查询购物车的请求因为查询商品服务而出现故障，也不会导致服务器的线程资源被耗尽，不会影响到其它接口。**
+
+#### 服务熔断
+
+**线程隔离虽然避免了雪崩问题，但故障服务（商品服务）依然会拖慢购物车服务（服务调用方）的接口响应速度。而且商品查询的故障依然会导致查询购物车功能出现故障，购物车业务也变的不可用了。**
+
+**服务熔断：由断路器统计请求的异常比例或慢调用比例，如果超出阈值则会熔断该业务，拦截该接口的请求，熔断期间，所有请求快速失败，全部走fallback逻辑**
+
+**所以，我们要做两件事情：**
+
+- **编写服务降级逻辑：就是服务调用失败后的处理逻辑，根据业务场景，可以抛出异常，也可以返回友好提示或默认数据。**
+- **异常统计和熔断：统计服务提供方的异常比例，当比例过高表明该接口会影响到其它服务，应该拒绝调用该接口，而是直接走降级逻辑。**
+
+![](assets\1738659927791(1).png)
+
+#### 服务保护技术
+
+|          | Sentinel                                       | Hystrix                      |
+| -------- | ---------------------------------------------- | ---------------------------- |
+| 线程隔离 | 信号量隔离                                     | 线程池隔离/信号量隔离        |
+| 熔断策略 | 基于慢调用比例或异常比例                       | 基于异常比率                 |
+| 限流     | 基于QFS，支持流量整形                          | 有限的支持                   |
+| Fallback | 支持                                           | 支持                         |
+| 控制台   | 开箱即用，可配置规则，查看秒级监控，机器发现等 | 不完善                       |
+| 配置方式 | 基于控制台，重启后失败                         | 基于注解或配置文件，永久生效 |
+| 出平方   | alibaba                                        | Netflex                      |
+
+### Sentinel
+
+#### 快速入门
+
+**Sentinel是阿里巴巴开源的一款服务保护框架，目前已经加入SpringCloudAlibaba中。官方网站：**
+
+**https://sentinelguard.io/zh-cn/**
+
+**Sentinel 的使用可以分为两个部分:**
+
+- **核心库（Jar包）：不依赖任何框架/库，能够运行于 Java 8 及以上的版本的运行时环境，同时对 Dubbo / Spring Cloud 等框架也有较好的支持。在项目中引入依赖即可实现服务限流、隔离、熔断等功能。**
+- **控制台（Dashboard）：Dashboard 主要负责管理推送规则、监控、管理机器信息等。**
+
+**为了方便监控微服务，我们先把Sentinel的控制台搭建出来。**
+
+**1）下载jar包**
+
+**下载地址：**
+
+**https://github.com/alibaba/Sentinel/releases**
+
+**2）运行**
+
+**将jar包放在任意非中文、不包含特殊字符的目录下，重命名为`sentinel-dashboard.jar`：**
+
+**然后运行如下命令启动控制台：**
+
+```Shell
+java -Dserver.port=8090 -Dcsp.sentinel.dashboard.server=localhost:8090 -Dproject.name=sentinel-dashboard -jar sentinel-dashboard.jar
+```
+
+**其它启动时可配置参数可参考官方文档：**
+
+**https://github.com/alibaba/Sentinel/wiki/%E5%90%AF%E5%8A%A8%E9%85%8D%E7%BD%AE%E9%A1%B9**
+
+**3）访问**
+
+**访问[http://localhost:8090](http://localhost:8080)页面，就可以看到sentinel的控制台了：**
+
+**需要输入账号和密码，默认都是：sentinel**
+
+**登录后，即可看到控制台，默认会监控sentinel-dashboard服务本身：**
+
+#### 微服务整合
+
+**我们在`cart-service`模块中整合sentinel，连接`sentinel-dashboard`控制台，步骤如下：**
+
+**1）引入sentinel依赖**
+
+```XML
+<!--sentinel-->
+<dependency>
+    <groupId>com.alibaba.cloud</groupId> 
+    <artifactId>spring-cloud-starter-alibaba-sentinel</artifactId>
+</dependency>
+```
+
+**2）配置控制台**
+
+**修改application.yaml文件，添加下面内容：**
+
+```YAML
+spring:
+  cloud: 
+    sentinel:
+      transport:
+        dashboard: localhost:8090
+```
+
+**3）访问`cart-service`的任意端点**
+
+**重启`cart-service`，然后访问查询购物车接口，sentinel的客户端就会将服务访问的信息提交到`sentinel-dashboard`控制台。并展示出统计信息：**
+
+![](assets\1738667614023.png)
+
+**点击簇点链路菜单，会看到下面的页面：**
+
+![](assets\1738667768404.png)
+
+**所谓簇点链路，就是单机调用链路，是一次请求进入服务后经过的每一个被`Sentinel`监控的资源。默认情况下，`Sentinel`会监控`SpringMVC`的每一个`Endpoint`（接口）。**
+
+**因此，我们看到`/carts`这个接口路径就是其中一个簇点，我们可以对其进行限流、熔断、隔离等保护措施。**
+
+**不过，需要注意的是，我们的SpringMVC接口是按照Restful风格设计，因此购物车的查询、删除、修改等接口全部都是`/carts`路径：**
+
+![](assets\1738668131942.png)
+
+**默认情况下Sentinel会把路径作为簇点资源的名称，无法区分路径相同但请求方式不同的接口，查询、删除、修改等都被识别为一个簇点资源，这显然是不合适的。**
+
+**所以我们可以选择打开Sentinel的请求方式前缀，把`请求方式 + 请求路径`作为簇点资源名：**
+
+首先，在`cart-service`的`application.yml`中添加下面的配置：
+
+```YAML
+spring:
+  cloud:
+    sentinel:
+      transport:
+        dashboard: localhost:8090
+      http-method-specify: true # 开启请求方式前缀
+```
+
+**然后，重启服务，通过页面访问购物车的相关接口，可以看到sentinel控制台的簇点链路发生了变化：**
+
+![](assets\1738668233436.png)
+
+#### 请求限流实现
+
+**在簇点链路后面点击流控按钮，即可对其做限流配置：**
+
+![](D:\StudyNote\assets\1738670083215.png)
+
+**在弹出的菜单中这样填写：**
+
+![](assets\1738670207003.png)
+
+**这样就把查询购物车列表这个簇点资源的流量限制在了每秒6个，也就是最大QPS为6.**
+
+#### 线程隔离实现
+
+**首先，我们需要开启OpenFeign对Sentinel的支持**
+
+```YAML
+feign:
+  sentinel:
+    enabled: true # 开启feign对sentinel的支持
+```
+
+**需要注意的是，默认情况下SpringBoot项目的tomcat最大线程数是200，允许的最大连接是8492，单机测试很难打满。**
+
+**所以我们需要配置一下cart-service模块的application.yml文件，修改tomcat连接：**
+
+```YAML
+server:
+  port: 8082
+  tomcat:
+    threads:
+      max: 50 # 允许的最大线程数
+    accept-count: 50 # 最大排队等待数量
+    max-connections: 100 # 允许的最大连接
+```
+
+**然后重启cart-service服务，可以看到查询商品的FeignClient自动变成了一个簇点资源：**
+
+![](assets\1738683564376.png)
+
+**接着我们去配置线程隔离，点击查询商品的FeignClient对应的簇点资源后面的流控按钮：**
+
+![](assets\1738683793582.png)
+
+**在弹出的表单中填写下面内容**
+
+![](assets\1738683809731.png)
+
+**注意，这里勾选的是并发线程数限制，也就是说这个查询功能最多使用5个线程，而不是5QPS。如果查询商品的接口每秒处理2个请求，则5个线程的实际QPS在10左右，而超出的请求自然会被拒绝。**
+
+#### Fallback（降级逻辑）
+
+**触发限流或熔断后的请求不一定要直接报错，也可以返回一些默认数据或者友好提示，用户体验会更好。**
+
+**给FeignClient编写失败后的降级逻辑有两种方式：**
+
+- **方式一：FallbackClass，无法对远程调用的异常做处理**
+- **方式二：FallbackFactory，可以对远程调用的异常做处理，我们一般选择这种方式。**
+
+**这里我们演示方式二的失败降级处理。**
+
+**首先在item-service包下的api包下定义一个fallback类**
+
+```
+package com.hmall.item.api.fallback;
+
+import com.hmall.common.domain.OrderDetailDTO;
+import com.hmall.common.exception.BizIllegalException;
+import com.hmall.common.utils.CollUtils;
+import com.hmall.item.api.client.ItemClient;
+import com.hmall.item.domain.dto.ItemDTO;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.cloud.openfeign.FallbackFactory;
+
+import java.util.Collection;
+import java.util.List;
+@Slf4j
+public class ItemClientFallback implements FallbackFactory<ItemClient> {
+    @Override
+    public ItemClient create(Throwable cause) {
+        return new ItemClient() {
+            @Override
+            public List<ItemDTO> queryItemsByIds(Collection<Long> ids) {
+                log.error("远程调用ItemClient#queryItemByIds方法出现异常，参数：{}", ids, cause);
+                // 查询购物车允许失败，查询失败，返回空集合
+                return CollUtils.emptyList();
+            }
+
+            @Override
+            public void deductStock(List<OrderDetailDTO> items) {
+                // 库存扣减业务需要触发事务回滚，查询失败，抛出异常
+                throw new BizIllegalException(cause);
+            }
+        };
+    }
+}
+```
+
+**这个类继承于FallbackFactory，内部有一个方法可以创建对应泛型的client,这里改方法就是创建一个Itemclient去代替原有的Itemclient进行反馈，里面的方法都是原有的Itemclient接口里的接口，当然我们在这里要重写这些方法**
+
+
+
+**然后我们需要将ItemClientFallback注册为一个bean,这里我们需要一个配置类对其进行注册**
+
+```
+@Slf4j
+public class ItemFeignConfig {
+    @Bean
+    public ItemClientFallback itemClientFallback() {
+        log.info("正在定义ItemClientFallback");
+        return new ItemClientFallback();
+    }
+}
+```
+
+**最后在ItemClient上的@FeignClient使用fallbackFactory指定一下即可**
+
+```
+package com.hmall.item.api.client;
+
+
+import com.hmall.common.config.DefaultFeignConfig;
+import com.hmall.common.domain.OrderDetailDTO;
+import com.hmall.item.api.config.ItemFeignConfig;
+import com.hmall.item.api.fallback.ItemClientFallback;
+import com.hmall.item.domain.dto.ItemDTO;
+import org.springframework.cloud.openfeign.FeignClient;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestParam;
+
+import java.util.Collection;
+import java.util.List;
+
+@FeignClient(value = "item-service", fallbackFactory = ItemClientFallback.class, configuration = {DefaultFeignConfig.class, ItemFeignConfig.class})
+public interface ItemClient {
+    @GetMapping("/items")
+    List<ItemDTO> queryItemsByIds(@RequestParam("ids") Collection<Long> ids);
+
+    @PutMapping("/items/stock/deduct")
+    void deductStock(@RequestBody List<OrderDetailDTO> items);
+}
+```
+
+**当然我们需要注意，我们给ItemClient新添加了一个配置类，也需要在注解里把这个类添加进去**
+
 # Mybatis	
 
 ## 入门
