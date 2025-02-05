@@ -9934,6 +9934,10 @@ public interface ItemClient {
 
 **当然我们需要注意，我们给ItemClient新添加了一个配置类，也需要在注解里把这个类添加进去**
 
+### 服务熔断实现
+
+
+
 # Mybatis	
 
 ## 入门
