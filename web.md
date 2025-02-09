@@ -11645,6 +11645,989 @@ public class SpringDataRedisTest {
 }
 ```
 
+# RabbitMQ
+
+## 同步调用与异步调用
+
+**微服务一旦拆分，必然涉及到服务之间的相互调用，目前我们服务之间调用采用的都是基于OpenFeign的调用。这种调用中，调用者发起请求后需要等待服务提供者执行业务返回结果后，才能继续执行后面的业务。也就是说调用者在调用过程中处于阻塞状态，因此我们称这种调用方式为同步调用，也可以叫同步通讯。但在很多场景下，我们可能需要采用异步通讯的方式，为什么呢？**
+
+**同步通讯：就如同打视频电话，双方的交互都是实时的。因此同一时刻你只能跟一个人打视频电话。**
+
+**异步通讯：就如同发微信聊天，双方的交互不是实时的，你不需要立刻给对方回应。因此你可以多线操作，同时跟多人聊天。**
+
+**两种方式各有优劣，打电话可以立即得到响应，但是你却不能跟多个人同时通话。发微信可以同时与多个人收发微信，但是往往响应会有延迟。**
+
+**所以，如果我们的业务需要实时得到服务提供方的响应，则应该选择同步通讯（同步调用）。而如果我们追求更高的效率，并且不需要实时响应，则应该选择异步通讯（异步调用）。**
+
+
+
+### 同步调用
+
+**之前说过，我们现在基于OpenFeign的调用都属于是同步调用，那么这种方式存在哪些问题呢？**
+
+**举个例子，我们以昨天留给大家作为作业的余额支付功能为例来分析，首先看下整个流程：**
+
+**![](assets\1738912063089.png)**
+
+**目前我们采用的是基于OpenFeign的同步调用，也就是说业务执行流程是这样的：**
+
+- **支付服务需要先调用用户服务完成余额扣减**
+- **然后支付服务自己要更新支付流水单的状态**
+- **然后支付服务调用交易服务，更新业务订单状态为已支付**
+
+**三个步骤依次执行。**
+
+**这其中就存在3个问题：**
+
+**第一，拓展性差**
+
+**我们目前的业务相对简单，但是随着业务规模扩大，产品的功能也在不断完善。**
+
+**在大多数电商业务中，用户支付成功后都会以短信或者其它方式通知用户，告知支付成功。假如后期产品经理提出这样新的需求，你怎么办？是不是要在上述业务中再加入通知用户的业务？**
+
+**某些电商项目中，还会有积分或金币的概念。假如产品经理提出需求，用户支付成功后，给用户以积分奖励或者返还金币，你怎么办？是不是要在上述业务中再加入积分业务、返还金币业务？**
+
+**最终你的支付业务会越来越臃肿：**
+
+**![](assets\1738912173659.png)**
+
+**也就是说每次有新的需求，现有支付逻辑都要跟着变化，代码经常变动，不符合开闭原则，拓展性不好。**
+
+**第二，性能下降**
+
+**由于我们采用了同步调用，调用者需要等待服务提供者执行完返回结果后，才能继续向下执行，也就是说每次远程调用，调用者都是阻塞等待状态。最终整个业务的响应时长就是每次远程调用的执行时长之和：**
+
+**![](assets\1738912189796.png)**
+
+**假如每个微服务的执行时长都是50ms，则最终整个业务的耗时可能高达300ms，性能太差了。**
+
+**第三，级联失败**
+
+**由于我们是基于OpenFeign调用交易服务、通知服务。当交易服务、通知服务出现故障时，整个事务都会回滚，交易失败。**
+
+**这其实就是同步调用的级联失败问题。**
+
+**但是大家思考一下，我们假设用户余额充足，扣款已经成功，此时我们应该确保支付流水单更新为已支付，确保交易成功。毕竟收到手里的钱没道理再退回去吧。**
+
+**因此，这里不能因为短信通知、更新订单状态失败而回滚整个事务。**
+
+**综上，同步调用的方式存在下列问题：**
+
+- **拓展性差**
+- **性能下降**
+- **级联失败**
+
+**而要解决这些问题，我们就必须用异步调用的方式来代替同步调用。**
+
+### 异步调用
+
+异步调用方式其实就是基于消息通知的方式，一般包含三个角色：
+
+- 消息发送者：投递消息的人，就是原来的调用方
+- 消息Broker：管理、暂存、转发消息，你可以把它理解成微信服务器
+- 消息接收者：接收和处理消息的人，就是原来的服务提供方
+
+![](assets\1738920984407.png)
+
+在异步调用中，发送者不再直接同步调用接收者的业务接口，而是发送一条消息投递给消息Broker。然后接收者根据自己的需求从消息Broker那里订阅消息。每当发送方发送消息后，接受者都能获取消息并处理。
+
+这样，发送消息的人和接收消息的人就完全解耦了。
+
+还是以余额支付业务为例：
+
+![](assets\1738921020880.png)
+
+除了扣减余额、更新支付流水单状态以外，其它调用逻辑全部取消。而是改为发送一条消息到Broker。而相关的微服务都可以订阅消息通知，一旦消息到达Broker，则会分发给每一个订阅了的微服务，处理各自的业务。
+
+假如产品经理提出了新的需求，比如要在支付成功后更新用户积分。支付代码完全不用变更，而仅仅是让积分服务也订阅消息即可：
+
+![](assets\1738921036561.png)
+
+不管后期增加了多少消息订阅者，作为支付服务来讲，执行问扣减余额、更新支付流水状态后，发送消息即可。业务耗时仅仅是这三部分业务耗时，仅仅100ms，大大提高了业务性能。
+
+另外，不管是交易服务、通知服务，还是积分服务，他们的业务与支付关联度低。现在采用了异步调用，解除了耦合，他们即便执行过程中出现了故障，也不会影响到支付服务。
+
+综上，异步调用的优势包括：
+
+- 耦合度更低
+- 性能更好
+- 业务拓展性强
+- 故障隔离，避免级联失败
+
+当然，异步通信也并非完美无缺，它存在下列缺点：
+
+- 完全依赖于Broker的可靠性、安全性和性能
+- 架构复杂，后期维护和调试麻烦
+
+## 技术选型
+
+**消息Broker，目前常见的实现方案就是消息队列（MessageQueue），简称为MQ.**
+
+**目比较常见的MQ实现：**
+
+- **ActiveMQ**
+- **RabbitMQ**
+- **RocketMQ**
+- **Kafka**
+
+**几种常见MQ的对比：**
+
+|                | **RabbitMQ**                | **ActiveMQ**                       | **RocketMQ**   | **Kafka**      |
+| -------------- | --------------------------- | ---------------------------------- | -------------- | -------------- |
+| **公司/社区**  | **Rabbit**                  | **Apache**                         | **阿里**       | **Apache**     |
+| **开发语言**   | **Erlang**                  | **Java**                           | **Java**       | **Scala&Java** |
+| **协议支持**   | **AMQP，XMPP，SMTP，STOMP** | **OpenWire,STOMP，REST,XMPP,AMQP** | **自定义协议** | **自定义协议** |
+| **可用性**     | **高**                      | **一般**                           | **高**         | **高**         |
+| **单机吞吐量** | **一般**                    | **差**                             | **高**         | **非常高**     |
+| **消息延迟**   | **微秒级**                  | **毫秒级**                         | **毫秒级**     | **毫秒以内**   |
+| **消息可靠性** | **高**                      | **一般**                           | **高**         | **一般**       |
+
+**追求可用性：Kafka、 RocketMQ 、RabbitMQ**
+
+**追求可靠性：RabbitMQ、RocketMQ**
+
+**追求吞吐能力：RocketMQ、Kafka**
+
+**追求消息低延迟：RabbitMQ、Kafka**
+
+**据统计，目前国内消息队列使用最多的还是RabbitMQ，再加上其各方面都比较均衡，稳定性也好，因此我们课堂上选择RabbitMQ来学习。**
+
+## 安装和部署
+
+**我们同样基于Docker来安装RabbitMQ，使用下面的命令即可：**
+
+```Shell
+docker run \
+ -e RABBITMQ_DEFAULT_USER=itheima \
+ -e RABBITMQ_DEFAULT_PASS=123321 \
+ -v mq-plugins:/plugins \
+ --name mq \
+ --hostname mq \
+ -p 15672:15672 \
+ -p 5672:5672 \
+ --network hm-net\
+ -d \
+ rabbitmq:3.8-management
+```
+
+**可以看到在安装命令中有两个映射的端口：**
+
+- **15672：RabbitMQ提供的管理控制台的端口**
+- **5672：RabbitMQ的消息发送处理接口**
+
+**安装完成后，我们访问 http://192.168.150.101:15672即可看到管理控制台。首次访问需要登录，默认的用户名和密码在配置文件中已经指定了。**
+
+**登录后即可看到管理控制台总览页面：**
+
+**RabbitMQ对应的架构如图：**
+
+![](assets\1738925493735.png)
+
+**其中包含几个概念：**
+
+- **`publisher`：生产者，也就是发送消息的一方**
+- **`consumer`：消费者，也就是消费消息的一方**
+- **`queue`：队列，存储消息。生产者投递的消息会暂存在消息队列中，等待消费者处理**
+- **`exchange`：交换机，负责消息路由。生产者发送的消息由交换机决定投递到哪个队列。**
+- **`virtual host`：虚拟主机，起到数据隔离的作用。每个虚拟主机相互独立，有各自的exchange、queue.这样当不同项目使用用一个RabbitMQ服务时，就能够通过虚拟主机做到彼此隔离**
+
+## 收发消息
+
+### 交换机
+
+**我们打开Exchanges选项卡，可以看到已经存在很多交换机：**
+
+**![](assets\1738928481192.png)**
+
+**我们点击任意交换机，即可进入交换机详情页面。仍然会利用控制台中的publish message 发送一条消息：**
+
+**![](assets\1738928497697.png)**
+
+**![](assets\1738928514368.png)**
+
+**这里是由控制台模拟了生产者发送的消息。由于没有消费者存在，最终消息丢失了，这样说明交换机没有存储消息的能力。**
+
+### **队列**
+
+**我们打开`Queues`选项卡，新建一个队列：**
+
+**![](assets\1738928627065.png)**
+
+**命名为`hello.queue1`：**
+
+**![](assets\1738928646166.png)**
+
+**再以相同的方式，创建一个队列，密码为`hello.queue2`，最终队列列表如下：**
+
+**![](assets\1738928658630.png)**
+
+**此时，我们再次向`amq.fanout`交换机发送一条消息。会发现消息依然没有到达队列！！**
+
+**怎么回事呢？**
+
+**发送到交换机的消息，只会路由到与其绑定的队列，因此仅仅创建队列是不够的，我们还需要将其与交换机绑定。**
+
+### **绑定关系**
+
+**点击`Exchanges`选项卡，点击`amq.fanout`交换机，进入交换机详情页，然后点击`Bindings`菜单，在表单中填写要绑定的队列名称：**
+
+**![](assets\1738928899023.png)**
+
+**相同的方式，将hello.queue2也绑定到改交换机。**
+
+**最终，绑定结果如下：**
+
+**![](assets\1738928910786.png)**
+
+### **发送消息**
+
+**再次回到exchange页面，找到刚刚绑定的`amq.fanout`，点击进入详情页，再次发送一条消息：**
+
+**![](assets\1738928968167.png)**
+
+**回到`Queues`页面，可以发现`hello.queue`中已经有一条消息了：**
+
+**![](assets\1738928981923.png)**
+
+**点击队列名称，进入详情页，查看队列详情，这次我们点击get message：**
+
+**![](assets\1738928999599.png)**
+
+**可以看到消息到达队列了：**
+
+**![](assets\1738929032723.png)**
+
+**这个时候如果有消费者监听了MQ的`hello.queue1`或`hello.queue2`队列，自然就能接收到消息了。**
+
+## **数据隔离**
+
+### **用户管理**
+
+**点击`Admin`选项卡，首先会看到RabbitMQ控制台的用户管理界面：**
+
+**![](assets\1738930187042.png)**
+
+**这里的用户都是RabbitMQ的管理或运维人员。目前只有安装RabbitMQ时添加的`itheima`这个用户。仔细观察用户表格中的字段，如下：**
+
+- **`Name`：`itheima`，也就是用户名**
+- **`Tags`：`administrator`，说明`itheima`用户是超级管理员，拥有所有权限**
+- **`Can access virtual host`： `/`，可以访问的`virtual host`，这里的`/`是默认的`virtual host`**
+
+**对于小型企业而言，出于成本考虑，我们通常只会搭建一套MQ集群，公司内的多个不同项目同时使用。这个时候为了避免互相干扰， 我们会利用`virtual host`的隔离特性，将不同项目隔离。一般会做两件事情：**
+
+- **给每个项目创建独立的运维账号，将管理权限分离。**
+- **给每个项目创建不同的`virtual host`，将每个项目的数据隔离。**
+
+**比如，我们给黑马商城创建一个新的用户，命名为`hmall`：**
+
+**![](assets\1738930238040.png)**
+
+**你会发现此时hmall用户没有任何`virtual host`的访问权限：**
+
+**![](assets\1738930271324.png)**
+
+**别急，接下来我们就来授权。**
+
+### **virtual host**
+
+**我们先退出登录：**
+
+**![](D:assets\1738930374521.png)**
+
+**切换到刚刚创建的hmall用户登录，然后点击`Virtual Hosts`菜单，进入`virtual host`管理页：**
+
+**![](assets\1738930409078.png)**
+
+**可以看到目前只有一个默认的`virtual host`，名字为 `/`。**
+
+ **我们可以给黑马商城项目创建一个单独的`virtual host`，而不是使用默认的`/`。**
+
+**![](assets\1738930457935.png)**
+
+**创建完成后如图：**
+
+**![](assets\1738930491001.png)**
+
+**由于我们是登录`hmall`账户后创建的`virtual host`，因此回到`users`菜单，你会发现当前用户已经具备了对`/hmall`这个`virtual host`的访问权限了：**
+
+**![](D:\StudyNote\assets\1738930530735.png)**
+
+**此时，点击页面右上角的`virtual host`下拉菜单，切换`virtual host`为 `/hmall`：**
+
+**![](assets\1738930557896.png)**
+
+**然后再次查看queues选项卡，会发现之前的队列已经看不到了：**
+
+**![](assets\1738930592380.png)**
+
+**这就是基于`virtual host `的隔离效果。**
+
+## Spring AMQP
+
+### **快速入门**
+
+**在之前的案例中，我们都是经过交换机发送消息到队列，不过有时候为了测试方便，我们也可以直接向队列发送消息，跳过交换机。**
+
+**在入门案例中，我们就演示这样的简单模型，如图：**
+
+![](assets\1739087991876.png)
+
+**也就是：**
+
+- **publisher直接发送消息到队列**
+- **消费者监听并处理队列中的消息**
+
+**注意**：**这种模式一般测试使用，很少在生产中使用。**
+
+**首先我们需要引入相关依赖**
+
+```xml
+<!--AMQP依赖，包含RabbitMQ-->
+<dependency>
+	<groupId>org.springframework.boot</groupId>
+	<artifactId>spring-boot-starter-amqp</artifactId>
+</dependency>
+```
+
+**配置RabbitMQ服务端信息**
+
+```YAML
+spring:
+  rabbitmq:
+    host: 192.168.230.130 # 你的虚拟机IP
+    port: 5672 # 端口
+    virtual-host: /hmall # 虚拟主机
+    username: hmall # 用户名
+    password: 123 # 密码
+```
+
+**然后在`publisher`服务中编写测试类`SpringAmqpTest`，并利用`RabbitTemplate`实现消息发送：**
+
+```Java
+package com.itheima.publisher.amqp;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+
+@SpringBootTest
+public class SpringAmqpTest {
+
+    @Autowired
+    private RabbitTemplate rabbitTemplate;
+
+    @Test
+    public void testSimpleQueue() {
+        // 队列名称
+        String queueName = "simple.queue";
+        // 消息
+        String message = "hello, spring amqp!";
+        // 发送消息
+        rabbitTemplate.convertAndSend(queueName, message);
+    }
+}
+```
+
+**然后在`consumer`服务的`com.itheima.consumer.listener`包中新建一个类`SpringRabbitListener`，实现接受消息：**
+
+```Java
+package com.itheima.consumer.listener;
+
+import org.springframework.amqp.rabbit.annotation.RabbitListener;
+import org.springframework.stereotype.Component;
+
+@Component
+public class SpringRabbitListener {
+    // 利用RabbitListener来声明要监听的队列信息
+    // 将来一旦监听的队列中有了消息，就会推送给当前服务，调用当前方法，处理消息。
+    // 可以看到方法体中接收的就是消息体的内容
+    @RabbitListener(queues = "simple.queue")
+    public void listenSimpleQueueMessage(String msg) throws InterruptedException {
+        System.out.println("spring 消费者接收到消息：【" + msg + "】");
+    }
+}
+```
+
+### Work Queues
+
+**Work queues，任务模型。简单来说就是让多个消费者绑定到一个队列，共同消费队列中的消息。**
+
+![](assets\1739089596705.png)
+
+**当消息处理比较耗时的时候，可能生产消息的速度会远远大于消息的消费速度。长此以往，消息就会堆积越来越多，无法及时处理。**
+
+**此时就可以使用work 模型，多个消费者共同处理消息处理，消息处理的速度就能大大提高了。**
+
+
+
+**这次我们循环发送，模拟大量消息堆积现象。**
+
+**在publisher服务中的SpringAmqpTest类中添加一个测试方法：**
+
+```Java
+/**
+     * workQueue
+     * 向队列中不停发送消息，模拟消息堆积。
+     */
+@Test
+public void testWorkQueue() throws InterruptedException {
+    // 队列名称
+    String queueName = "work.queue";
+    // 消息
+    String message = "hello, message_";
+    for (int i = 0; i < 50; i++) {
+        // 发送消息，每20毫秒发送一次，相当于每秒发送50条消息
+        rabbitTemplate.convertAndSend(queueName, message + i);
+        Thread.sleep(20);
+    }
+}
+```
+
+**要模拟多个消费者绑定同一个队列，我们在consumer服务的SpringRabbitListener中添加2个新的方法：**
+
+```Java
+@RabbitListener(queues = "work.queue")
+public void listenWorkQueue1(String msg) throws InterruptedException {
+    System.out.println("消费者1接收到消息：【" + msg + "】" + LocalTime.now());
+    Thread.sleep(20);
+}
+
+@RabbitListener(queues = "work.queue")
+public void listenWorkQueue2(String msg) throws InterruptedException {
+    System.err.println("消费者2........接收到消息：【" + msg + "】" + LocalTime.now());
+    Thread.sleep(200);
+}
+```
+
+**注意到这两消费者，都设置了`Thead.sleep`，模拟任务耗时：**
+
+- **消费者1 sleep了20毫秒，相当于每秒钟处理50个消息**
+- **消费者2 sleep了200毫秒，相当于每秒处理5个消息**
+
+**通过测试，可以看到消费者1和消费者2竟然每人消费了25条消息：**
+
+- **消费者1很快完成了自己的25条消息**
+- **消费者2却在缓慢的处理自己的25条消息。**
+
+**也就是说消息是平均分配给每个消费者，并没有考虑到消费者的处理能力。导致1个消费者空闲，另一个消费者忙的不可开交。没有充分利用每一个消费者的能力，最终消息处理的耗时远远超过了1秒。这样显然是有问题的。**
+
+**在spring中有一个简单的配置，可以解决这个问题。我们修改consumer服务的application.yml文件，添加配置：**
+
+```YAML
+spring:
+  rabbitmq:
+    listener:
+      simple:
+        prefetch: 1 # 每次只能获取一条消息，处理完成才能获取下一个消息
+```
+
+**可以发现，由于消费者1处理速度较快，所以处理了更多的消息；消费者2处理速度较慢，只处理了6条消息。而最终总的执行耗时也在1秒左右，大大提升。**
+
+**正所谓能者多劳，这样充分利用了每一个消费者的处理能力，可以有效避免消息积压问题。**
+
+**Work模型的使用：**
+
+- **多个消费者绑定到一个队列，同一条消息只会被一个消费者处理**
+- **通过设置prefetch来控制消费者预取的消息数量**
+
+### 交换机类型
+
+**在之前的两个测试案例中，都没有交换机，生产者直接发送消息到队列。而一旦引入交换机，消息发送的模式会有很大变化：**
+
+![](assets\1739096842340.png)
+
+**可以看到，在订阅模型中，多了一个exchange角色，而且过程略有变化：**
+
+- **Publisher：生产者，不再发送消息到队列中，而是发给交换机**
+- **Exchange：交换机，一方面，接收生产者发送的消息。另一方面，知道如何处理消息，例如递交给某个特别队列、递交给所有队列、或是将消息丢弃。到底如何操作，取决于Exchange的类型。**
+- **Queue：消息队列也与以前一样，接收消息、缓存消息。不过队列一定要与交换机绑定。**
+- **Consumer：消费者，与以前一样，订阅队列，没有变化**
+
+**Exchange（交换机）只负责转发消息，不具备存储消息的能力，因此如果没有任何队列与Exchange绑定，或者没有符合路由规则的队列，那么消息会丢失！**
+
+**交换机的类型有四种：**
+
+- **Fanout：广播，将消息交给所有绑定到交换机的队列。我们最早在控制台使用的正是Fanout交换机**
+- **Direct：订阅，基于RoutingKey（路由key）发送给订阅了消息的队列**
+- **Topic：通配符订阅，与Direct类似，只不过RoutingKey可以使用通配符**
+- **Headers：头匹配，基于MQ的消息头匹配，用的较少。**
+
+### Fanout交换机
+
+**Fanout Exchange会将接收到的消息路由到每一个跟其绑定的queue,所以也叫广播模式**
+
+![](assets\1739097042123.png)
+
+**Fanout交换机有以下特点**
+
+​	**可以有多个队列**
+
+​	**每个队列都要绑定到Exchange（交换机）**
+
+​	**生产者发送的消息，只能发送到交换**
+
+​	**交换机把消息发送给绑定过的所有队列**
+
+​	**订阅队列的消费者都能拿到消息**
+
+**首先我们按照图中的结构创建交换机和队列，先创建两个队列分别命名为fanout.queue1和fanout.queue2**
+
+**接着创建交换机，命名为hmall.fanout**
+
+![](assets\1739101386871.png)
+
+**然后绑定两个队列到交换机：**
+
+**在publisher服务的SpringAmqpTest类中添加测试方法：**
+
+```Java
+@Test
+public void testFanoutExchange() {
+    // 交换机名称
+    String exchangeName = "hmall.fanout";
+    // 消息
+    String message = "hello, everyone!";
+    rabbitTemplate.convertAndSend(exchangeName, "", message);//第二个参数是routingKey,目前先不传
+}
+```
+
+**在consumer服务的SpringRabbitListener中添加两个方法，作为消费者：**
+
+```Java
+@RabbitListener(queues = "fanout.queue1")
+public void listenFanoutQueue1(String msg) {
+    System.out.println("消费者1接收到Fanout消息：【" + msg + "】");
+}
+
+@RabbitListener(queues = "fanout.queue2")
+public void listenFanoutQueue2(String msg) {
+    System.out.println("消费者2接收到Fanout消息：【" + msg + "】");
+}
+```
+
+**交换机的作用**
+
+- **接收publisher发送的消息**
+- **将消息按照规则路由到与之绑定的队列**
+- **不能缓存消息，路由失败，消息丢失**
+- **FanoutExchange的会将消息路由到每个绑定的队列**
+
+### Direct交换机
+
+**Fanout模式中，一条消息，会被所有订阅的队列都消费。但是，在某些场景下，我们希望不同的消息被不同的队列消费。这时就要用到Direct类型的Exchange。**
+
+![](assets\1739101852544.png)
+
+**在Direct模型下：**
+
+- **队列与交换机的绑定，不能是任意绑定了，而是要指定一个`RoutingKey`（路由key）**
+- **消息的发送方在 向 Exchange发送消息时，也必须指定消息的 `RoutingKey`。**
+- **Exchange不再把消息交给每一个绑定的队列，而是根据消息的`Routing Key`进行判断，只有队列的`Routingkey`与消息的 `Routing key`完全一致，才会接收到消息**
+
+**操作步骤**
+
+**声明一个名为`hmall.direct`的交换机**
+
+**声明队列`direct.queue1`，绑定`hmall.direct`，`bindingKey`为`blud`和`red`**
+
+**声明队列`direct.queue2`，绑定`hmall.direct`，`bindingKey`为`yellow`和`red`**
+
+**在`consumer`服务中，编写两个消费者方法，分别监听direct.queue1和direct.queue2** 
+
+**在publisher中编写测试方法，向`hmall.direct`发送消息** 
+
+**这里我们以direct.queue1为例展示将red作为key绑定给队列**
+
+![](assets\1739102174566.png)
+
+**在consumer服务的SpringRabbitListener中添加方法：**
+
+```Java
+@RabbitListener(queues = "direct.queue1")
+public void listenDirectQueue1(String msg) {
+    System.out.println("消费者1接收到direct.queue1的消息：【" + msg + "】");
+}
+
+@RabbitListener(queues = "direct.queue2")
+public void listenDirectQueue2(String msg) {
+    System.out.println("消费者2接收到direct.queue2的消息：【" + msg + "】");
+}
+```
+
+
+
+**在publisher服务的SpringAmqpTest类中添加测试方法：**
+
+```Java
+@Test
+public void testSendDirectExchange() {
+    // 交换机名称
+    String exchangeName = "hmall.direct";
+    // 消息
+    String message = "红色警报！日本乱排核废水，导致海洋生物变异，惊现哥斯拉！";
+    // 发送消息
+    rabbitTemplate.convertAndSend(exchangeName, "red", message);
+}
+```
+
+**由于使用的red这个key，所以两个消费者都收到了消息：**
+
+![](assets\1739102469564.png)
+
+**我们再切换为blue这个key：**
+
+```Java
+@Test
+public void testSendDirectExchange() {
+    // 交换机名称
+    String exchangeName = "hmall.direct";
+    // 消息
+    String message = "最新报道，哥斯拉是居民自治巨型气球，虚惊一场！";
+    // 发送消息
+    rabbitTemplate.convertAndSend(exchangeName, "blue", message);
+}
+```
+
+**你会发现，只有消费者1收到了消息：**
+
+![](assets\1739102515724.png)
+
+
+
+**描述下Direct交换机与Fanout交换机的差异**
+
+- **Fanout交换机将消息路由给每一个与之绑定的队列**
+- **Direct交换机根据RoutingKey判断路由给哪个队列**
+- **如果多个队列具有相同的RoutingKey，则与Fanout功能类似**
+
+### Topic交换机
+
+`**Topic`类型的`Exchange`与`Direct`相比，都是可以根据`RoutingKey`把消息路由到不同的队列。**
+
+**只不过`Topic`类型`Exchange`可以让队列在绑定`BindingKey` 的时候使用通配符！**
+
+```
+BindingKey` 一般都是有一个或多个单词组成，多个单词之间以`.`分割，例如： `item.insert
+```
+
+**通配符规则：**
+
+- **`#`：匹配一个或多个词**
+- **`*`：匹配不多不少恰好1个词**
+
+**举例：**
+
+- **`item.#`：能够匹配`item.spu.insert` 或者 `item.spu`**
+- **`item.*`：只能匹配`item.spu`**
+
+![](assets\1739102797291.png)
+
+**假如此时publisher发送的消息使用的`RoutingKey`共有四种：**
+
+- **`china.news `代表有中国的新闻消息；**
+- **`china.weather` 代表中国的天气消息；**
+- **`japan.news` 则代表日本新闻**
+- **`japan.weather` 代表日本的天气消息；**
+
+**解释：**
+
+- **`topic.queue1`：绑定的是`china.#` ，凡是以 `china.`开头的`routing key` 都会被匹配到，包括：**
+  - **`china.news`**
+  - **`china.weather`**
+- **`topic.queue2`：绑定的是`#.news` ，凡是以 `.news`结尾的 `routing key` 都会被匹配。包括:**
+  - **`china.news`**
+  - **`japan.news`**
+
+**接下来，我们就按照上图所示，来演示一下Topic交换机的用法。**
+
+**首先，在控制台按照图示例子创建队列、交换机，并利用通配符绑定队列和交换机。此处步骤略。**
+
+**在publisher服务的SpringAmqpTest类中添加测试方法：**
+
+```Java
+/**
+ * topicExchange
+ */
+@Test
+public void testSendTopicExchange() {
+    // 交换机名称
+    String exchangeName = "hmall.topic";
+    // 消息
+    String message = "喜报！孙悟空大战哥斯拉，胜!";
+    // 发送消息
+    rabbitTemplate.convertAndSend(exchangeName, "china.news", message);
+}
+```
+
+**在consumer服务的SpringRabbitListener中添加方法：**
+
+```Java
+@RabbitListener(queues = "topic.queue1")
+public void listenTopicQueue1(String msg){
+    System.out.println("消费者1接收到topic.queue1的消息：【" + msg + "】");
+}
+
+@RabbitListener(queues = "topic.queue2")
+public void listenTopicQueue2(String msg){
+    System.out.println("消费者2接收到topic.queue2的消息：【" + msg + "】");
+}
+```
+
+**描述下Direct交换机与Topic交换机的差异**
+
+- **Topic交换机接收的消息RoutingKey必须是多个单词，以 `.` 分割**
+- **Topic交换机与队列绑定时的bindingKey可以指定通配符**
+- **`#`：代表0个或多个词**
+- **`*`：代表1个词**
+
+### 申明队列和交换机
+
+**SpringAMQP提供了一个Queue类，用来创建队列：**
+
+![](assets\1739108513141.png)
+
+**SpringAMQP还提供了一个Exchange接口，来表示所有不同类型的交换机：**
+
+![](assets\1739108582606.png)
+
+**另外SpringAMQP还提供了ExchangeBuilder来简化这个过程：**
+
+![](assets\1739108669969.png)
+
+**而在绑定队列和交换机时，则需要使用BindingBuilder工厂类来创建Binding对象：**
+
+![](assets\1739108719513.png)
+
+#### fanout示例
+
+**在consumer中创建一个类，声明队列和交换机：**
+
+```Java
+package com.itheima.consumer.config;
+
+import org.springframework.amqp.core.Binding;
+import org.springframework.amqp.core.BindingBuilder;
+import org.springframework.amqp.core.FanoutExchange;
+import org.springframework.amqp.core.Queue;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+@Configuration
+public class FanoutConfig {
+    /**
+     * 声明交换机
+     * @return Fanout类型交换机
+     */
+    @Bean
+    public FanoutExchange fanoutExchange(){
+        return new FanoutExchange("hmall.fanout");
+    }
+
+    /**
+     * 第1个队列
+     */
+    @Bean
+    public Queue fanoutQueue1(){
+        return new Queue("fanout.queue1");
+    }
+
+    /**
+     * 绑定队列和交换机
+     */
+    @Bean
+    public Binding bindingQueue1(Queue fanoutQueue1, FanoutExchange fanoutExchange){
+        return BindingBuilder.bind(fanoutQueue1).to(fanoutExchange);
+    }
+
+    /**
+     * 第2个队列
+     */
+    @Bean
+    public Queue fanoutQueue2(){
+        return new Queue("fanout.queue2");
+    }
+
+    /**
+     * 绑定队列和交换机
+     */
+    @Bean
+    public Binding bindingQueue2(Queue fanoutQueue2, FanoutExchange fanoutExchange){
+        return BindingBuilder.bind(fanoutQueue2).to(fanoutExchange);
+    }
+}
+```
+
+#### direct示例
+
+**direct模式由于要绑定多个KEY，会非常麻烦，每一个Key都要编写一个binding：**
+
+```Java
+package com.itheima.consumer.config;
+
+import org.springframework.amqp.core.*;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+@Configuration
+public class DirectConfig {
+
+    /**
+     * 声明交换机
+     * @return Direct类型交换机
+     */
+    @Bean
+    public DirectExchange directExchange(){
+        return ExchangeBuilder.directExchange("hmall.direct").build();
+    }
+
+    /**
+     * 第1个队列
+     */
+    @Bean
+    public Queue directQueue1(){
+        return new Queue("direct.queue1");
+    }
+
+    /**
+     * 绑定队列和交换机
+     */
+    @Bean
+    public Binding bindingQueue1WithRed(Queue directQueue1, DirectExchange directExchange){
+        return BindingBuilder.bind(directQueue1).to(directExchange).with("red");
+    }
+    /**
+     * 绑定队列和交换机
+     */
+    @Bean
+    public Binding bindingQueue1WithBlue(Queue directQueue1, DirectExchange directExchange){
+        return BindingBuilder.bind(directQueue1).to(directExchange).with("blue");
+    }
+
+    /**
+     * 第2个队列
+     */
+    @Bean
+    public Queue directQueue2(){
+        return new Queue("direct.queue2");
+    }
+
+    /**
+     * 绑定队列和交换机
+     */
+    @Bean
+    public Binding bindingQueue2WithRed(Queue directQueue2, DirectExchange directExchange){
+        return BindingBuilder.bind(directQueue2).to(directExchange).with("red");
+    }
+    /**
+     * 绑定队列和交换机
+     */
+    @Bean
+    public Binding bindingQueue2WithYellow(Queue directQueue2, DirectExchange directExchange){
+        return BindingBuilder.bind(directQueue2).to(directExchange).with("yellow");
+    }
+}
+```
+
+**通常我们在消费者那一端书写队列和交换机相关的配置类**
+
+#### 基于注解声明
+
+**基于@Bean的方式声明队列和交换机比较麻烦，Spring还提供了基于注解方式来声明。**
+
+**例如，我们同样声明Direct模式的交换机和队列：**
+
+```Java
+@RabbitListener(bindings = @QueueBinding(
+    value = @Queue(name = "direct.queue1"),
+    exchange = @Exchange(name = "hmall.direct", type = ExchangeTypes.DIRECT),
+    key = {"red", "blue"}
+))
+public void listenDirectQueue1(String msg){
+    System.out.println("消费者1接收到direct.queue1的消息：【" + msg + "】");
+}
+
+@RabbitListener(bindings = @QueueBinding(
+    value = @Queue(name = "direct.queue2"),
+    exchange = @Exchange(name = "hmall.direct", type = ExchangeTypes.DIRECT),
+    key = {"red", "yellow"}
+))
+public void listenDirectQueue2(String msg){
+    System.out.println("消费者2接收到direct.queue2的消息：【" + msg + "】");
+}
+```
+
+**其中@Queue里的durable属性是可持久化，值为true代表需要持久化**
+
+**是不是简单多了。**
+
+**再试试Topic模式：**
+
+```Java
+@RabbitListener(bindings = @QueueBinding(
+    value = @Queue(name = "topic.queue1"),
+    exchange = @Exchange(name = "hmall.topic", type = ExchangeTypes.TOPIC),
+    key = "china.#"
+))
+public void listenTopicQueue1(String msg){
+    System.out.println("消费者1接收到topic.queue1的消息：【" + msg + "】");
+}
+
+@RabbitListener(bindings = @QueueBinding(
+    value = @Queue(name = "topic.queue2"),
+    exchange = @Exchange(name = "hmall.topic", type = ExchangeTypes.TOPIC),
+    key = "#.news"
+))
+public void listenTopicQueue2(String msg){
+    System.out.println("消费者2接收到topic.queue2的消息：【" + msg + "】");
+}
+```
+
+### 消息转换器
+
+**Spring的消息发送代码接收的消息体是一个Object：**
+
+![](assets\1739110092553.png)
+
+**而在数据传输时，它会把你发送的消息序列化为字节发送给MQ，接收消息的时候，还会把字节反序列化为Java对象。**
+
+**只不过，默认情况下Spring采用的序列化方式是JDK序列化。众所周知，JDK序列化存在下列问题：**
+
+- **数据体积过大**
+- **有安全漏洞**
+- **可读性差**
+
+#### 配置JSON转化器
+
+**显然，JDK序列化方式并不合适。我们希望消息体的体积更小、可读性更高，因此可以使用JSON方式来做序列化和反序列化。**
+
+**在`publisher`和`consumer`两个服务中都引入依赖：**
+
+```XML
+<dependency>
+    <groupId>com.fasterxml.jackson.dataformat</groupId>
+    <artifactId>jackson-dataformat-xml</artifactId>
+    <version>2.9.10</version>
+</dependency>
+```
+
+**注意，如果项目中引入了`spring-boot-starter-web`依赖，则无需再次引入`Jackson`依赖。**
+
+**配置消息转换器，在`publisher`和`consumer`两个服务的启动类中添加一个Bean即可：**
+
+```Java
+@Bean
+public MessageConverter messageConverter(){
+    // 1.定义消息转换器
+    Jackson2JsonMessageConverter jackson2JsonMessageConverter = new Jackson2JsonMessageConverter();
+    // 2.配置自动创建消息id，用于识别不同消息，也可以在业务中基于ID判断是否是重复消息
+    jackson2JsonMessageConverter.setCreateMessageIds(true);
+    return jackson2JsonMessageConverter;
+}
+```
+
+**消息转换器中添加的messageId可以便于我们将来做幂等性判断。**
+
 
 
 
