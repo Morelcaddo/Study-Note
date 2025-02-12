@@ -12112,6 +12112,8 @@ public void listenWorkQueue2(String msg) throws InterruptedException {
 
 **也就是说消息是平均分配给每个消费者，并没有考虑到消费者的处理能力。导致1个消费者空闲，另一个消费者忙的不可开交。没有充分利用每一个消费者的能力，最终消息处理的耗时远远超过了1秒。这样显然是有问题的。**
 
+#### 能者多劳
+
 **在spring中有一个简单的配置，可以解决这个问题。我们修改consumer服务的application.yml文件，添加配置：**
 
 ```YAML
@@ -12627,6 +12629,448 @@ public MessageConverter messageConverter(){
 ```
 
 **消息转换器中添加的messageId可以便于我们将来做幂等性判断。**
+
+## 发送者的可靠性
+
+**消息从生产者到消费者的每一步都可能导致消息丢失：**
+
+- **发送消息时丢失：**
+  - **生产者发送消息时连接MQ失败**
+  - **生产者发送消息到达MQ后未找到`Exchange`**
+  - **生产者发送消息到达MQ的`Exchange`后，未找到合适的`Queue`**
+  - **消息到达MQ后，处理消息的进程发生异常**
+- **MQ导致消息丢失：**
+  - **消息到达MQ，保存到队列后，尚未消费就突然宕机**
+- **消费者处理消息时：**
+  - **消息接收后尚未处理突然宕机**
+  - **消息接收后处理过程中抛出异常**
+
+**综上，我们要解决消息丢失问题，保证MQ的可靠性，就必须从3个方面入手：**
+
+- **确保生产者一定把消息发送到MQ**
+- **确保MQ不会将消息弄丢**
+- **确保消费者一定要处理消息**
+
+### 发送者重连
+
+**首先第一种情况，就是生产者发送消息时，出现了网络故障，导致与MQ的连接中断。**
+
+**为了解决这个问题，SpringAMQP提供的消息发送时的重试机制。即：当`RabbitTemplate`与MQ连接超时后，多次重试。**
+
+**修改`publisher`模块的`application.yaml`文件，添加下面的内容：**
+
+```YAML
+spring:
+  rabbitmq:
+    connection-timeout: 1s # 设置MQ的连接超时时间
+    template:
+      retry:
+        enabled: true # 开启超时重试机制
+        initial-interval: 1000ms # 失败后的初始等待时间
+        multiplier: 1 # 失败后下次的等待时长倍数，下次等待时长 = initial-interval * multiplier
+        max-attempts: 3 # 最大重试次数
+```
+
+**注意：当网络不稳定的时候，利用重试机制可以有效提高消息发送的成功率。不过SpringAMQP提供的重试机制是阻塞式的重试，也就是说多次重试等待的过程中，当前线程是被阻塞的。**
+
+**如果对于业务性能有要求，建议禁用重试机制。如果一定要使用，请合理配置等待时长和重试次数，当然也可以考虑使用异步线程来执行发送消息的代码。**
+
+### 发送者确认
+
+**一般情况下，只要生产者与MQ之间的网路连接顺畅，基本不会出现发送消息丢失的情况，因此大多数情况下我们无需考虑这种问题。**
+
+**不过，在少数情况下，也会出现消息发送到MQ之后丢失的现象，比如：**
+
+- **MQ内部处理消息的进程发生了异常**
+- **生产者发送消息到达MQ后未找到`Exchange`**
+- **生产者发送消息到达MQ的`Exchange`后，未找到合适的`Queue`，因此无法路由**
+
+**针对上述情况，RabbitMQ提供了生产者消息确认机制，包括`Publisher Confirm`和`Publisher Return`两种。在开启确认机制的情况下，当生产者发送消息给MQ后，MQ会根据消息处理的情况返回不同的回执。**
+
+**具体如图所示：**
+
+![](assets\1739173669635.png)
+
+**总结如下：**
+
+- **publisher-confirm，发送者确认**
+
+- - **消息成功投递到交换机，返回ack**
+  - **消息未投递到交换机，返回nack**
+
+- **publisher-return，发送者回执**
+
+- - **消息投递到交换机了，但是没有路由到队列。返回ACK，及路由失败原因。**
+
+
+
+**其中`ack`和`nack`属于Publisher Confirm机制，`ack`是投递成功；`nack`是投递失败。而`return`则属于Publisher Return机制。**
+
+**默认两种机制都是关闭状态，需要通过配置文件来开启。**
+
+**在publisher模块的`application.yaml`中添加配置：**
+
+```YAML
+spring:
+  rabbitmq:
+    publisher-confirm-type: correlated # 开启publisher confirm机制，并设置confirm类型
+    publisher-returns: true # 开启publisher return机制
+```
+
+**这里`publisher-confirm-type`有三种模式可选：**
+
+- **`none`：关闭confirm机制**
+- **`simple`：同步阻塞等待MQ的回执**
+- **`correlated`：MQ异步回调返回回执**
+
+**一般我们推荐使用`correlated`，回调机制。**
+
+#### ReturnCallback
+
+**每个`RabbitTemplate`只能配置一个`ReturnCallback`，因此我们可以在配置类中统一设置。我们在publisher模块定义一个配置类：**
+
+```Java
+package com.itheima.publisher.config;
+
+import lombok.AllArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.amqp.core.ReturnedMessage;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.context.annotation.Configuration;
+
+import javax.annotation.PostConstruct;
+
+@Slf4j
+@AllArgsConstructor
+@Configuration
+public class MqConfig {
+    private final RabbitTemplate rabbitTemplate;
+
+    @PostConstruct
+    public void init(){
+        rabbitTemplate.setReturnsCallback(new RabbitTemplate.ReturnsCallback() {
+            @Override
+            public void returnedMessage(ReturnedMessage returned) {
+                log.error("触发return callback,");
+                log.debug("exchange: {}", returned.getExchange());
+                log.debug("routingKey: {}", returned.getRoutingKey());
+                log.debug("message: {}", returned.getMessage());
+                log.debug("replyCode: {}", returned.getReplyCode());
+                log.debug("replyText: {}", returned.getReplyText());
+            }
+        });
+    }
+}
+```
+
+**@PostConstruct注解**
+
+**@PostConstruct该注解被用来修饰一个非静态的void（）方法。被@PostConstruct修饰的方法会在服务器加载Servlet的时候运行，并且只会被服务器执行一次。PostConstruct在构造函数之后执行。**
+
+**通常我们会是在Spring框架中使用到@PostConstruct注解 该注解的方法在整个Bean初始化中的执行顺序：**
+
+**Constructor(构造方法) -> @Autowired(依赖注入) -> @PostConstruct(注释的方法)**
+
+#### ConfirmCallback
+
+**由于每个消息发送时的处理逻辑不一定相同，因此ConfirmCallback需要在每次发消息时定义。具体来说，是在调用RabbitTemplate中的convertAndSend方法时，多传递一个参数, CorrelationData**
+
+**这里的CorrelationData中包含两个核心的东西：**
+
+- **`id`：消息的唯一标示，MQ对不同的消息的回执以此做判断，避免混淆**
+- **`SettableListenableFuture`：回执结果的Future对象**
+
+**将来MQ的回执就会通过这个`Future`来返回，我们可以提前给`CorrelationData`中的`Future`添加回调函数来处理消息回执：**
+
+**我们新建一个测试，向系统自带的交换机发送消息，并且添加`ConfirmCallback`：**
+
+```
+@Test
+public void testConfirmCallback() throws InterruptedException {
+    // 1.创建CorrelationData,这里构造函数的参数为消息id，用于标识消息
+    CorrelationData cd = new CorrelationData(UUID.randomUUID().toString());
+    // 2.给Future添加ConfirmCallback
+    cd.getFuture().addCallback(new ListenableFutureCallback<CorrelationData.Confirm>() {
+        @Override
+        public void onFailure(Throwable ex) {
+            // 2.1.Future发生异常时的处理逻辑，基本不会触发
+            log.error("send message fail", ex);
+        }
+        @Override
+        public void onSuccess(CorrelationData.Confirm result) {
+            // 2.2.Future接收到回执的处理逻辑，参数中的result就是回执内容
+            if(result.isAck()){ // result.isAck()，boolean类型，true代表ack回执，false 代表 nack回执
+                log.debug("发送消息成功，收到 ack!");
+            }else{ // result.getReason()，String类型，返回nack时的异常描述
+                log.error("发送消息失败，收到 nack, reason : {}", result.getReason());
+            }
+        }
+    });
+
+    // 交换机名称
+    String exchangeName = "hmall.direct";
+    // 消息
+    String message = "蓝色：通知";
+    // 发送消息
+    rabbitTemplate.convertAndSend(exchangeName, "blue", message);
+
+    Thread.sleep(2000);
+}
+```
+
+## MQ的可靠性
+
+**在默认情况下，RabbitMQ会将接收到的信息保存在内存中以降低消息收发的延迟，这样就会引发两个问题：**
+
+​	**一旦MQ宕机，内存中的信息就会丢失**
+
+​	**内存空间有限，当消费者故障或处理过慢时，会导致消息积压，引发MQ阻塞**
+
+### 数据持久化
+
+**RabbitMQ实现数据持久化包括3个方面：**
+
+​	**交换机持久化**
+
+​	**队列持久化**
+
+​	**消息持久化**
+
+#### 交换机持久化
+
+**在控制台的`Exchanges`页面，添加交换机时可以配置交换机的`Durability`参数：**
+
+![](assets\1739183726579.png)
+
+**设置为`Durable`就是持久化模式，`Transient`就是临时模式。**
+
+**基于Spring AMQP生成的交换机默认是持久化的**
+
+#### 队列持久化
+
+**在控制台的Queues页面，添加队列时，同样可以配置队列的`Durability`参数：**
+
+![](assets\1739183746315.png)
+
+**除了持久化以外，你可以看到队列还有很多其它参数，有一些我们会在后期学习。**
+
+**基于Spring AMQP生成的队列默认是持久化的**
+
+#### 消息持久化
+
+**在控制台发送消息的时候，可以添加很多参数，而消息的持久化是要配置一个`properties`：**
+
+![](assets\1739183762075.png)
+
+**说明**：**在开启持久化机制以后，如果同时还开启了生产者确认，那么MQ会在消息持久化以后才发送ACK回执，进一步确保消息的可靠性。**
+
+**不过出于性能考虑，为了减少IO次数，发送到MQ的消息并不是逐条持久化到数据库的，而是每隔一段时间批量持久化。一般间隔在100毫秒左右，这就会导致ACK有一定的延迟，因此建议生产者确认全部采用异步方式。**
+
+**在spring amqp中实现消息的可持久化**
+
+```
+@Test
+public void testSendMessage() {
+    //自定义构建message对象
+    Message message = MessageBuilder.withBody("hello".getBytes(StandardCharsets.UTF_8))
+            .setDeliveryMode(MessageDeliveryMode.PERSISTENT)
+            .build();
+    rabbitTemplate.convertAndSend("simple.queue", message);
+    
+}
+```
+
+**代码中的setDeliveryMode函数用于设置消息的持久化操作**
+
+### Lazy Queue
+
+**在默认情况下，RabbitMQ会将接收到的信息保存在内存中以降低消息收发的延迟。但在某些特殊情况下，这会导致消息积压，比如：**
+
+- **消费者宕机或出现网络故障**
+- **消息发送量激增，超过了消费者处理速度**
+- **消费者处理业务发生阻塞**
+
+**一旦出现消息堆积问题，RabbitMQ的内存占用就会越来越高，直到触发内存预警上限。此时RabbitMQ会将内存消息刷到磁盘上，这个行为成为`PageOut`. `PageOut`会耗费一段时间，并且会阻塞队列进程。因此在这个过程中RabbitMQ不会再处理新的消息，生产者的所有请求都会被阻塞。**
+
+**为了解决这个问题，从RabbitMQ的3.6.0版本开始，就增加了Lazy Queues的模式，也就是惰性队列。惰性队列的特征如下：**
+
+- **接收到消息后直接存入磁盘而非内存**
+- **消费者要消费消息时才会从磁盘中读取并加载到内存（也就是懒加载）**
+- **支持数百万条的消息存储**
+
+**而在3.12版本之后，LazyQueue已经成为所有队列的默认格式。因此官方推荐升级MQ为3.12版本或者所有队列都设置为LazyQueue模式。**
+
+#### 控制台配置Lazy模式
+
+**在添加队列的时候，添加`x-queue-mod=lazy`参数即可设置队列为Lazy模式：**
+
+![](assets\1739186360214(1).png)
+
+#### 代码配置Lazy模式
+
+**在利用SpringAMQP声明队列的时候，添加`x-queue-mod=lazy`参数也可设置队列为Lazy模式：**
+
+```Java
+@Bean
+public Queue lazyQueue(){
+    return QueueBuilder
+            .durable("lazy.queue")
+            .lazy() // 开启Lazy模式
+            .build();
+}
+```
+
+**当然，我们也可以基于注解来声明队列并设置为Lazy模式：**
+
+```Java
+@RabbitListener(queuesToDeclare = @Queue(
+        name = "lazy.queue",
+        durable = "true",
+        arguments = @Argument(name = "x-queue-mode", value = "lazy")
+))
+public void listenLazyQueue(String msg){
+    log.info("接收到 lazy.queue的消息：{}", msg);
+}
+```
+
+#### 更新已有队列为lazy模式
+
+**对于已经存在的队列，也可以配置为lazy模式，但是要通过设置policy实现。**
+
+**可以基于命令行设置policy：**
+
+```Shell
+rabbitmqctl set_policy Lazy "^lazy-queue$" '{"queue-mode":"lazy"}' --apply-to queues  
+```
+
+**命令解读：**
+
+- **`rabbitmqctl` ：RabbitMQ的命令行工具**
+- **`set_policy` ：添加一个策略**
+- **`Lazy` ：策略名称，可以自定义**
+- **`"^lazy-queue$"` ：用正则表达式匹配队列的名字**
+- **`'{"queue-mode":"lazy"}'` ：设置队列模式为lazy模式**
+- **`--apply-to queues`：策略的作用对象，是所有的队列**
+
+**当然，也可以在控制台配置policy，进入在控制台的`Admin`页面，点击`Policies`，即可添加配置：**
+
+![](assets\1739186663288(1).png)
+
+## 消费者可靠性
+
+### 消费者确认机制
+
+为了确认消费者是否成功处理消息，RabbitMQ提供了消费者确认机制（**Consumer Acknowledgement**）。即：当消费者处理消息结束后，应该向RabbitMQ发送一个回执，告知RabbitMQ自己消息处理状态。回执有三种可选值：
+
+- ack：成功处理消息，RabbitMQ从队列中删除该消息
+- nack：消息处理失败，RabbitMQ需要再次投递消息
+- reject：消息处理失败并拒绝该消息，RabbitMQ从队列中删除该消息
+
+一般reject方式用的较少，除非是消息格式有问题，那就是开发问题了。因此大多数情况下我们需要将消息处理的代码通过`try catch`机制捕获，消息处理成功时返回ack，处理失败时返回nack.
+
+
+
+由于消息回执的处理代码比较统一，因此SpringAMQP帮我们实现了消息确认。并允许我们通过配置文件设置ACK处理方式，有三种模式：
+
+- **`none`**：不处理。即消息投递给消费者后立刻ack，消息会立刻从MQ删除。非常不安全，不建议使用
+- **`manual`**：手动模式。需要自己在业务代码中调用api，发送`ack`或`reject`，存在业务入侵，但更灵活
+- **`auto`**：自动模式。SpringAMQP利用AOP对我们的消息处理逻辑做了环绕增强，当业务正常执行时则自动返回`ack`.  当业务出现异常时，根据异常判断返回不同结果：
+  - 如果是**业务异常**，会自动返回`nack`；
+  - 如果是**消息处理或校验异常**，自动返回`reject`;
+
+**返回Reject的常见异常有：**
+
+> Starting with version 1.3.2, the default ErrorHandler is now a ConditionalRejectingErrorHandler that rejects (and does not requeue) messages that fail with an irrecoverable error. Specifically, it rejects messages that fail with the following errors:
+>
+> - o.s.amqp…MessageConversionException: Can be thrown when converting the incoming message payload using a MessageConverter.
+> - o.s.messaging…MessageConversionException: Can be thrown by the conversion service if additional conversion is required when mapping to a @RabbitListener method.
+> - o.s.messaging…MethodArgumentNotValidException: Can be thrown if validation (for example, @Valid) is used in the listener and the validation fails.
+> - o.s.messaging…MethodArgumentTypeMismatchException: Can be thrown if the inbound message was converted to a type that is not correct for the target method. For example, the parameter is declared as Message<Foo> but Message<Bar> is received.
+> - java.lang.NoSuchMethodException: Added in version 1.6.3.
+> - java.lang.ClassCastException: Added in version 1.6.3.
+
+通过下面的配置可以修改SpringAMQP的ACK处理方式：
+
+```YAML
+spring:
+  rabbitmq:
+    listener:
+      simple:
+        acknowledge-mode: none # 不做处理  
+```
+
+
+
+### 失败重试机制
+
+**当消费者出现异常后，消息会不断requeue（重入队）到队列，再重新发送给消费者。如果消费者再次执行依然出错，消息会再次requeue到队列，再次投递，直到消息处理成功为止。**
+
+**极端情况就是消费者一直无法执行成功，那么消息requeue就会无限循环，导致mq的消息处理飙升，带来不必要的压力：**
+
+**当然，上述极端情况发生的概率还是非常低的，不过不怕一万就怕万一。为了应对上述情况Spring又提供了消费者失败重试机制：在消费者出现异常时利用本地重试，而不是无限制的requeue到mq队列。**
+
+**修改consumer服务的application.yml文件，添加内容：**
+
+```YAML
+spring:
+  rabbitmq:
+    listener:
+      simple:
+        retry:
+          enabled: true # 开启消费者失败重试
+          initial-interval: 1000ms # 初识的失败等待时长为1秒
+          multiplier: 1 # 失败的等待时长倍数，下次等待时长 = multiplier * last-interval
+          max-attempts: 3 # 最大重试次数
+          stateless: true # true无状态；false有状态。如果业务中包含事务，这里改为false
+```
+
+**重启consumer服务，重复之前的测试。可以发现：**
+
+- **消费者在失败后消息没有重新回到MQ无限重新投递，而是在本地重试了3次**
+- **本地重试3次以后，抛出了`AmqpRejectAndDontRequeueException`异常。查看RabbitMQ控制台，发现消息被删除了，说明最后SpringAMQP返回的是`reject`**
+
+**结论：**
+
+- **开启本地重试时，消息处理过程中抛出异常，不会requeue到队列，而是在消费者本地重试**
+- **重试达到最大次数后，Spring会返回reject，消息会被丢弃**
+
+### 失败处理策略
+
+**在之前的测试中，本地测试达到最大重试次数后，消息会被丢弃。这在某些对于消息可靠性要求较高的业务场景下，显然不太合适了。**
+
+**因此Spring允许我们自定义重试次数耗尽后的消息处理策略，这个策略是由`MessageRecovery`接口来定义的，它有3个不同实现：**
+
+-  **`RejectAndDontRequeueRecoverer`：重试耗尽后，直接`reject`，丢弃消息。默认就是这种方式** 
+-  **`ImmediateRequeueMessageRecoverer`：重试耗尽后，返回`nack`，消息重新入队** 
+-  **`RepublishMessageRecoverer`：重试耗尽后，将失败消息投递到指定的交换机** 
+
+**比较优雅的一种处理方案是`RepublishMessageRecoverer`，失败后将消息投递到一个指定的，专门存放异常消息的队列，后续由人工集中处理。**
+
+**1）在consumer服务中定义处理失败消息的交换机和队列**
+
+```Java
+@Bean
+public DirectExchange errorMessageExchange(){
+    return new DirectExchange("error.direct");
+}
+@Bean
+public Queue errorQueue(){
+    return new Queue("error.queue", true);
+}
+@Bean
+public Binding errorBinding(Queue errorQueue, DirectExchange errorMessageExchange){
+    return BindingBuilder.bind(errorQueue).to(errorMessageExchange).with("error");
+}
+```
+
+**2）定义一个RepublishMessageRecoverer，关联队列和交换机**
+
+```Java
+@Bean
+public MessageRecoverer republishMessageRecoverer(RabbitTemplate rabbitTemplate){
+    return new RepublishMessageRecoverer(rabbitTemplate, "error.direct", "error");
+}
+```
 
 
 
