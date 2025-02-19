@@ -10288,7 +10288,7 @@ seata:
 
 **流程图：**
 
-![img](https://b11et3un53m.feishu.cn/space/api/box/stream/download/asynccode/?code=OWZmM2JlMjg1YjA3NGUxYjgxMTNkOGNkMzJkYTIyNjFfNVowOXNQMjF0NVI5RHlWMlVXRVBqZHljdm11Tzd1MXJfVG9rZW46SXZuaGJxMU13b2hSYnZ4d0pGVGNzWm9CbkZnXzE3Mzg4NjI0Njg6MTczODg2NjA2OF9WNA)
+![](assets\1739520573723.png)
 
 ##### 实现步骤
 
@@ -11013,7 +11013,7 @@ public void deductBalance(Long id, Integer money) {
 }
 ```
 
-**IService接口批处理操作**
+### **IService接口批处理操作**
 
 **正常情况下使用saveBatch方法进行批处理操作，底层实际上生成了多条sql语句，但实际上，在类似insert这类操作时，多条数据可以用一条sql语句实现，倘若要达到这个效果需要在application.yaml配置文件中加入如下配置*，其中最关键的就是rewriteBatchedStatements=true，这个属于mysql的配置**
 
@@ -12960,23 +12960,23 @@ rabbitmqctl set_policy Lazy "^lazy-queue$" '{"queue-mode":"lazy"}' --apply-to qu
 
 ### 消费者确认机制
 
-为了确认消费者是否成功处理消息，RabbitMQ提供了消费者确认机制（**Consumer Acknowledgement**）。即：当消费者处理消息结束后，应该向RabbitMQ发送一个回执，告知RabbitMQ自己消息处理状态。回执有三种可选值：
+**为了确认消费者是否成功处理消息，RabbitMQ提供了消费者确认机制（Consumer Acknowledgement）。即：当消费者处理消息结束后，应该向RabbitMQ发送一个回执，告知RabbitMQ自己消息处理状态。回执有三种可选值：**
 
-- ack：成功处理消息，RabbitMQ从队列中删除该消息
-- nack：消息处理失败，RabbitMQ需要再次投递消息
-- reject：消息处理失败并拒绝该消息，RabbitMQ从队列中删除该消息
+- **ack：成功处理消息，RabbitMQ从队列中删除该消息**
+- **nack：消息处理失败，RabbitMQ需要再次投递消息**
+- **reject：消息处理失败并拒绝该消息，RabbitMQ从队列中删除该消息**
 
-一般reject方式用的较少，除非是消息格式有问题，那就是开发问题了。因此大多数情况下我们需要将消息处理的代码通过`try catch`机制捕获，消息处理成功时返回ack，处理失败时返回nack.
+**一般reject方式用的较少，除非是消息格式有问题，那就是开发问题了。因此大多数情况下我们需要将消息处理的代码通过`try catch`机制捕获，消息处理成功时返回ack，处理失败时返回nack.**
 
 
 
-由于消息回执的处理代码比较统一，因此SpringAMQP帮我们实现了消息确认。并允许我们通过配置文件设置ACK处理方式，有三种模式：
+**由于消息回执的处理代码比较统一，因此SpringAMQP帮我们实现了消息确认。并允许我们通过配置文件设置ACK处理方式，有三种模式：**
 
-- **`none`**：不处理。即消息投递给消费者后立刻ack，消息会立刻从MQ删除。非常不安全，不建议使用
-- **`manual`**：手动模式。需要自己在业务代码中调用api，发送`ack`或`reject`，存在业务入侵，但更灵活
-- **`auto`**：自动模式。SpringAMQP利用AOP对我们的消息处理逻辑做了环绕增强，当业务正常执行时则自动返回`ack`.  当业务出现异常时，根据异常判断返回不同结果：
-  - 如果是**业务异常**，会自动返回`nack`；
-  - 如果是**消息处理或校验异常**，自动返回`reject`;
+- **`none`：不处理。即消息投递给消费者后立刻ack，消息会立刻从MQ删除。非常不安全，不建议使用**
+- **`manual`：手动模式。需要自己在业务代码中调用api，发送`ack`或`reject`，存在业务入侵，但更灵活**
+- **`auto`：自动模式。SpringAMQP利用AOP对我们的消息处理逻辑做了环绕增强，当业务正常执行时则自动返回`ack`.  当业务出现异常时，根据异常判断返回不同结果：**
+  - **如果是业务异常，会自动返回`nack`；**
+  - **如果是消息处理或校验异常，自动返回`reject`;**
 
 **返回Reject的常见异常有：**
 
@@ -13071,6 +13071,507 @@ public MessageRecoverer republishMessageRecoverer(RabbitTemplate rabbitTemplate)
     return new RepublishMessageRecoverer(rabbitTemplate, "error.direct", "error");
 }
 ```
+
+### 业务幂等性
+
+**何为幂等性？**
+
+**幂等是一个数学概念，用函数表达式来描述是这样的：`f(x) = f(f(x))`，例如求绝对值函数。**
+
+**在程序开发中，则是指同一个业务，执行一次或多次对业务状态的影响是一致的。例如：**
+
+- **根据id删除数据**
+- **查询数据**
+- **新增数据**
+
+**但数据的更新往往不是幂等的，如果重复执行可能造成不一样的后果。比如：**
+
+- **取消订单，恢复库存的业务。如果多次恢复就会出现库存重复增加的情况**
+- **退款业务。重复退款对商家而言会有经济损失。**
+
+**所以，我们要尽可能避免业务被重复执行。**
+
+**然而在实际业务场景中，由于意外经常会出现业务被重复执行的情况，例如：**
+
+- **页面卡顿时频繁刷新导致表单重复提交**
+- **服务间调用的重试**
+- **MQ消息的重复投递**
+
+**我们在用户支付成功后会发送MQ消息到交易服务，修改订单状态为已支付，就可能出现消息重复投递的情况。如果消费者不做判断，很有可能导致消息被消费多次，出现业务故障。**
+
+**举例：**
+
+1. **假如用户刚刚支付完成，并且投递消息到交易服务，交易服务更改订单为已支付状态。**
+2. **由于某种原因，例如网络故障导致生产者没有得到确认，隔了一段时间后重新投递给交易服务。**
+3. **但是，在新投递的消息被消费之前，用户选择了退款，将订单状态改为了已退款状态。**
+4. **退款完成后，新投递的消息才被消费，那么订单状态会被再次改为已支付。业务异常。**
+
+**因此，我们必须想办法保证消息处理的幂等性。这里给出两种方案：**
+
+- **唯一消息ID**
+- **业务状态判断**
+
+#### 唯一消息ID
+
+**这个思路非常简单：**
+
+1. **每一条消息都生成一个唯一的id，与消息一起投递给消费者。**
+2. **消费者接收到消息后处理自己的业务，业务处理成功后将消息ID保存到数据库**
+3. **如果下次又收到相同消息，去数据库查询判断是否存在，存在则为重复消息放弃处理。**
+
+**我们该如何给消息添加唯一ID呢？**
+
+**其实很简单，SpringAMQP的MessageConverter自带了MessageID的功能，我们只要开启这个功能即可。**
+
+**以Jackson的消息转换器为例：**
+
+```Java
+@Bean
+public MessageConverter messageConverter(){
+    // 1.定义消息转换器
+    Jackson2JsonMessageConverter jjmc = new Jackson2JsonMessageConverter();
+    // 2.配置自动创建消息id，用于识别不同消息，也可以在业务中基于ID判断是否是重复消息
+    jjmc.setCreateMessageIds(true);
+    return jjmc;
+}
+```
+
+**当然使用唯一消息id需要涉及到数据库操作会影响mq性能，一般建议建议在业务上操作，或者我们可以把id存储在Redis提高读写效率**
+
+#### 业务判断
+
+**业务判断就是基于业务本身的逻辑或状态来判断是否是重复的请求或消息，不同的业务场景判断的思路也不一样。**
+
+**例如我们当前案例中，处理消息的业务逻辑是把订单状态从未支付修改为已支付。因此我们就可以在执行业务时判断订单状态是否是未支付，如果不是则证明订单已经被处理过，无需重复处理。**
+
+**相比较而言，消息ID的方案需要改造原有的数据库，所以我更推荐使用业务判断的方案。**
+
+**以支付修改订单的业务为例，我们需要修改`OrderServiceImpl`中的`markOrderPaySuccess`方法：**
+
+```Java
+    @Override
+    public void markOrderPaySuccess(Long orderId) {
+        // 1.查询订单
+        Order old = getById(orderId);
+        // 2.判断订单状态
+        if (old == null || old.getStatus() != 1) {
+            // 订单不存在或者订单状态不是1，放弃处理
+            return;
+        }
+        // 3.尝试更新订单
+        Order order = new Order();
+        order.setId(orderId);
+        order.setStatus(2);
+        order.setPayTime(LocalDateTime.now());
+        updateById(order);
+    }
+```
+
+**上述代码逻辑上符合了幂等判断的需求，但是由于判断和更新是两步动作，因此在极小概率下可能存在线程安全问题。**
+
+**我们可以合并上述操作为这样：**
+
+```Java
+@Override
+public void markOrderPaySuccess(Long orderId) {
+    // UPDATE `order` SET status = ? , pay_time = ? WHERE id = ? AND status = 1
+    lambdaUpdate()
+            .set(Order::getStatus, 2)
+            .set(Order::getPayTime, LocalDateTime.now())
+            .eq(Order::getId, orderId)
+            .eq(Order::getStatus, 1)
+            .update();
+}
+```
+
+**注意看，上述代码等同于这样的SQL语句：**
+
+```SQL
+UPDATE `order` SET status = ? , pay_time = ? WHERE id = ? AND status = 1
+```
+
+**我们在where条件中除了判断id以外，还加上了status必须为1的条件。如果条件不符（说明订单已支付），则SQL匹配不到数据，根本不会执行。**
+
+### 兜底方案
+
+**虽然我们利用各种机制尽可能增加了消息的可靠性，但也不好说能保证消息100%的可靠。万一真的MQ通知失败该怎么办呢？**
+
+**有没有其它兜底方案，能够确保订单的支付状态一致呢？**
+
+**其实思想很简单：既然MQ通知不一定发送到交易服务，那么交易服务就必须自己主动去查询支付状态。这样即便支付服务的MQ通知失败，我们依然能通过主动查询来保证订单状态的一致。**
+
+**流程如下：**
+
+![](assets\1739438076125.png)
+
+**图中黄色线圈起来的部分就是MQ通知失败后的兜底处理方案，由交易服务自己主动去查询支付状态。**
+
+**不过需要注意的是，交易服务并不知道用户会在什么时候支付，如果查询的时机不正确（比如查询的时候用户正在支付中），可能查询到的支付状态也不正确。**
+
+**那么问题来了，我们到底该在什么时间主动查询支付状态呢？**
+
+**这个时间是无法确定的，因此，通常我们采取的措施就是利用定时任务定期查询，例如每隔20秒就查询一次，并判断支付状态。如果发现订单已经支付，则立刻更新订单状态为已支付即可。**
+
+**定时任务大家之前学习过，具体的实现这里就不再赘述了。**
+
+**至此，消息可靠性的问题已经解决了。**
+
+**综上，支付服务与交易服务之间的订单状态一致性是如何保证的？**
+
+- **首先，支付服务会正在用户支付成功以后利用MQ消息通知交易服务，完成订单状态同步。**
+- **其次，为了保证MQ消息的可靠性，我们采用了生产者确认机制、消费者确认、消费者失败重试等策略，确保消息投递的可靠性**
+- **最后，我们还在交易服务设置了定时任务，定期查询订单支付状态。这样即便MQ通知失败，还可以利用定时任务作为兜底方案，确保订单支付状态的最终一致性。**
+
+## 延迟消息
+
+**在电商的支付业务中，对于一些库存有限的商品，为了更好的用户体验，通常都会在用户下单时立刻扣减商品库存。例如电影院购票、高铁购票，下单后就会锁定座位资源，其他人无法重复购买。**
+
+**但是这样就存在一个问题，假如用户下单后一直不付款，就会一直占有库存资源，导致其他客户无法正常交易，最终导致商户利益受损！**
+
+**因此，电商中通常的做法就是：对于超过一定时间未支付的订单，应该立刻取消订单并释放占用的库存。**
+
+**例如，订单支付超时时间为30分钟，则我们应该在用户下单后的第30分钟检查订单支付状态，如果发现未支付，应该立刻取消订单，释放库存。**
+
+**但问题来了：如何才能准确的实现在下单后第30分钟去检查支付状态呢？**
+
+**像这种在一段时间以后才执行的任务，我们称之为延迟任务，而要实现延迟任务，最简单的方案就是利用MQ的延迟消息了。**
+
+**在RabbitMQ中实现延迟消息也有两种方案：**
+
+- **死信交换机+TTL**
+- **延迟消息插件**
+
+### 死信交换机
+
+**什么是死信？**
+
+**当一个队列中的消息满足下列情况之一时，可以成为死信（dead letter）：**
+
+- **消费者使用`basic.reject`或 `basic.nack`声明消费失败，并且消息的`requeue`参数设置为false**
+- **消息是一个过期消息，超时无人消费**
+- **要投递的队列消息满了，无法投递**
+
+**如果一个队列中的消息已经成为死信，并且这个队列通过`dead-letter-exchange`属性指定了一个交换机，那么队列中的死信就会投递到这个交换机中，而这个交换机就称为死信交换机（Dead Letter Exchange）。而此时加入有队列与死信交换机绑定，则最终死信就会被投递到这个队列中。**
+
+**死信交换机有什么作用呢？**
+
+​	**收集那些因处理失败而被拒绝的消息**
+
+​	**收集那些因队列满了而被拒绝的消息**
+
+​	**收集因TTL（有效期）到期的消息**
+
+**前面两种作用场景可以看做是把死信交换机当做一种消息处理的最终兜底方案，与消费者重试时讲的`RepublishMessageRecoverer`作用类似。**
+
+**而最后一种场景，大家设想一下这样的场景：**
+
+**如图，有一组绑定的交换机（`ttl.fanout`）和队列（`ttl.queue`）。但是`ttl.queue`没有消费者监听，而是设定了死信交换机`hmall.direct`，而队列`direct.queue1`则与死信交换机绑定，RoutingKey是blue：**
+
+![](assets\1739441181213.png)
+
+**假如我们现在发送一条消息到`ttl.fanout`，RoutingKey为blue，并设置消息的有效期为5000毫秒：**
+
+![](assets\1739441212712.png)
+
+**注意：尽管这里的`ttl.fanout`不需要RoutingKey，但是当消息变为死信并投递到死信交换机时，会沿用之前的RoutingKey，这样`hmall.direct`才能正确路由消息。**
+
+**消息肯定会被投递到`ttl.queue`之后，由于没有消费者，因此消息无人消费。5秒之后，消息的有效期到期，成为死信：**
+
+![](assets\1739441248965.png)
+
+**死信被投递到死信交换机`hmall.direct`，并沿用之前的RoutingKey，也就是`blue`：**
+
+![](assets\1739441287173(1).png)
+
+**由于`direct.queue1`与`hmall.direct`绑定的key是blue，因此最终消息被成功路由到`direct.queue1`，如果此时有消费者与`direct.queue1`绑定， 也就能成功消费消息了。但此时已经是5秒钟以后了：**
+
+![](assets\1739441325314(1).png)
+
+**也就是说，publisher发送了一条消息，但最终consumer在5秒后才收到消息。我们成功实现了延迟消息。**
+
+**注意：**
+
+**RabbitMQ的消息过期是基于追溯方式来实现的，也就是说当一个消息的TTL到期以后不一定会被移除或投递到死信交换机，而是在消息恰好处于队首时才会被处理。**
+
+**当队列中消息堆积很多的时候，过期消息可能不会被按时处理，因此你设置的TTL时间不一定准确。**
+
+### DelayExchange插件
+
+**基于死信队列虽然可以实现延迟消息，但是太麻烦了。因此RabbitMQ社区提供了一个延迟消息插件来实现相同的效果。**
+
+**官方文档说明：**
+
+https://blog.rabbitmq.com/posts/2015/04/scheduling-messages-with-rabbitmq
+
+#### 下载
+
+**插件下载地址：**
+
+**https://github.com/rabbitmq/rabbitmq-delayed-message-exchange**
+
+**由于我们安装的MQ是`3.8`版本，因此这里下载`3.8.17`版本：**
+
+#### 安装
+
+**因为我们是基于Docker安装，所以需要先查看RabbitMQ的插件目录对应的数据卷。**
+
+```Shell
+docker volume inspect mq-plugins
+```
+
+**结果如下：**
+
+```JSON
+[
+    {
+        "CreatedAt": "2024-06-19T09:22:59+08:00",
+        "Driver": "local",
+        "Labels": null,
+        "Mountpoint": "/var/lib/docker/volumes/mq-plugins/_data",
+        "Name": "mq-plugins",
+        "Options": null,
+        "Scope": "local"
+    }
+]
+```
+
+**插件目录被挂载到了`/var/lib/docker/volumes/mq-plugins/_data`这个目录，我们上传插件到该目录下。**
+
+**接下来执行命令，安装插件：**
+
+```Shell
+docker exec -it mq rabbitmq-plugins enable rabbitmq_delayed_message_exchange
+```
+
+
+
+#### 声明延迟交换机
+
+**基于注解方式：**
+
+```Java
+@RabbitListener(bindings = @QueueBinding(
+        value = @Queue(name = "delay.queue", durable = "true"),
+        exchange = @Exchange(name = "delay.direct", delayed = "true"),
+        key = "delay"
+))
+public void listenDelayMessage(String msg){
+    log.info("接收到delay.queue的延迟消息：{}", msg);
+}
+```
+
+
+
+**基于`@Bean`的方式：**
+
+```Java
+package com.itheima.consumer.config;
+
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.amqp.core.*;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+@Slf4j
+@Configuration
+public class DelayExchangeConfig {
+
+    @Bean
+    public DirectExchange delayExchange(){
+        return ExchangeBuilder
+                .directExchange("delay.direct") // 指定交换机类型和名称
+                .delayed() // 设置delay的属性为true
+                .durable(true) // 持久化
+                .build();
+    }
+
+    @Bean
+    public Queue delayedQueue(){
+        return new Queue("delay.queue");
+    }
+    
+    @Bean
+    public Binding delayQueueBinding(){
+        return BindingBuilder.bind(delayedQueue()).to(delayExchange()).with("delay");
+    }
+}
+```
+
+#### 发送延迟消息
+
+**发送消息时，必须通过x-delay属性设定延迟时间：**
+
+```Java
+@Test
+void testPublisherDelayMessage() {
+    // 1.创建消息
+    String message = "hello, delayed message";
+    // 2.发送消息，利用消息后置处理器添加消息头
+    rabbitTemplate.convertAndSend("delay.direct", "delay", message, new MessagePostProcessor() {
+        @Override
+        public Message postProcessMessage(Message message) throws AmqpException {
+            // 添加延迟消息属性
+            message.getMessageProperties().setDelay(5000);
+            return message;
+        }
+    });
+}
+```
+
+**注意：**
+
+**延迟消息插件内部会维护一个本地数据库表，同时使用Elang Timers功能实现计时。如果消息的延迟时间设置较长，可能会导致堆积的延迟消息非常多，会带来较大的CPU开销，同时延迟消息的时间会存在误差。**
+
+**因此，不建议设置延迟时间过长的延迟消息。**
+
+## 基于mq通信的两个服务传递用户信息
+
+**某些业务中，需要根据登录用户信息处理业务，而基于MQ的异步调用并不会传递登录用户信息。前面我们的做法比较麻烦，至少要做两件事：**
+
+- **消息发送者在消息体中传递登录用户**
+- **消费者获取消息体中的登录用户，处理业务**
+
+**这样做不仅麻烦，而且编程体验也不统一，毕竟我们之前都是使用UserContext来获取用户。**
+
+### 方案一：在发送消息和接受消息时进行处理
+
+**发送者**
+
+```java
+rabbitTemplate.convertAndSend("trade.topic", "order.create", itemIds, message -> {
+    message.getMessageProperties().setHeader("user-info", UserContext.getUser());
+    return message;
+});
+```
+
+**使用MessagePostProcessor对消息添加处理操作，首先获取Message对象，然后给消息添加一个请求头“user-info”，用于存储用户信息**
+
+**消费者**
+
+```java
+@RabbitListener(bindings = @QueueBinding(
+        value = @Queue(name = "cart.clear.queue", durable = "true"),
+        exchange = @Exchange(name = "trade.topic"),
+        key = {"order.create"}
+
+))
+public void listenCartClear(Collection<Long> ids, Message message) {
+    log.info("收到订单创建消息，准备清除购物车数据");
+    UserContext.setUser(message.getMessageProperties().getHeader("user-info"));
+    cartService.removeByItemIds(ids);
+}
+```
+
+
+
+**在消费者的接收消息的方法里添加Message类型的参数，然后在方法拿到消息的请求头，获取里面的user-info数据，并存入ThreadLocaL**
+
+### **方案二：通过修改mq的配置来实现上述操作**
+
+```java
+package com.hmall.common.config;
+
+import com.hmall.common.utils.UserContext;
+import lombok.AllArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.aopalliance.intercept.MethodInterceptor;
+import org.springframework.amqp.core.Message;
+import org.springframework.amqp.core.MessagePostProcessor;
+import org.springframework.amqp.rabbit.config.SimpleRabbitListenerContainerFactory;
+import org.springframework.amqp.rabbit.connection.ConnectionFactory;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.amqp.support.converter.Jackson2JsonMessageConverter;
+import org.springframework.amqp.support.converter.MessageConverter;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+import javax.annotation.PostConstruct;
+
+@Configuration
+@Slf4j
+@AllArgsConstructor
+public class MqConfig {
+    @Bean
+    public MessageConverter messageConverter(){
+        log.info("初始化消息转换器.......");
+        // 1.定义消息转换器
+        Jackson2JsonMessageConverter jjmc = new Jackson2JsonMessageConverter();
+        // 2.配置自动创建消息id，用于识别不同消息，也可以在业务中基于ID判断是否是重复消息
+        jjmc.setCreateMessageIds(true);
+        return jjmc;
+    }
+
+
+    @Bean
+    public MessagePostProcessor messagePostProcessor(){
+        log.info("初始化消息头信息.......");
+        return message -> {
+            message.getMessageProperties().setHeader("user-info", UserContext.getUser());
+            return message;
+        };
+    }
+
+    @Bean
+    public MethodInterceptor userContextMessageAdvice(){
+        log.info("初始化消息拦截器.....");
+        return invocation -> {
+            for(Object arg : invocation.getArguments()){
+                if(arg instanceof Message){
+                    Message message = (Message) arg;
+                    UserContext.setUser(message.getMessageProperties().getHeader("user-info"));
+                    break;
+                }
+            }
+            return invocation.proceed();
+        };
+    }
+
+
+    @Bean
+    public RabbitTemplate rabbitTemplate(ConnectionFactory connectionFactory){
+        RabbitTemplate rabbitTemplate = new RabbitTemplate(connectionFactory);
+        rabbitTemplate.setMessageConverter(messageConverter());
+        rabbitTemplate.setBeforePublishPostProcessors(messagePostProcessor());
+        return rabbitTemplate;
+    }
+
+    @Bean
+    public SimpleRabbitListenerContainerFactory rabbitListenerContainerFactory(ConnectionFactory connectionFactory){
+        SimpleRabbitListenerContainerFactory factory = new SimpleRabbitListenerContainerFactory();
+        factory.setConnectionFactory(connectionFactory);
+        factory.setMessageConverter(messageConverter());
+        factory.setAdviceChain(userContextMessageAdvice());
+        return factory;
+    }
+
+}
+```
+
+**MessagePostProcessor 的作用**
+
+**MessagePostProcessor 允许你在消息的生命周期中插入自定义逻辑，通常用于以下场景：**
+
+**消息发送前的处理：在消息发送到 RabbitMQ 之前，修改消息的属性（例如设置消息头、过期时间、优先级等）。**
+
+**消息消费后的处理：在消息从 RabbitMQ 消费之后，对消息进行额外的处理（例如记录日志、修改消息内容等）。**
+
+
+
+**SimpleRabbitListenerContainerFactory 的作用**
+
+**SimpleRabbitListenerContainerFactory 是 Spring AMQP 提供的一个工厂类，用于创建和管理 RabbitMQ 消息监听器的容器（SimpleMessageListenerContainer）。它的主要作用包括：**
+
+**配置消息监听器的连接工厂（ConnectionFactory）。**
+
+**设置消息转换器（MessageConverter），用于将 RabbitMQ 的消息体转换为 Java 对象。**
+
+**添加拦截器链（AdviceChain），用于在消息处理前后执行自定义逻辑。**
+
+
+
+**首先要在配置端实现消息传递的效果，我们需要重新自定义一个RabbitListener，因为是我们自定义的我们需要为他设置ConnectionFactory，ConnectionFactory系统已经有默认的创建好的，我们直接用参数的形式进行依赖注入，拿到这个ConnectionFactory，此外我们还需要消息转换器，直接将相关的方法导入就行，最后就是在发送消息添加一个MessagePostProcessor，对所有的消息，在消息发送前进行添加请求头的操作**
+
+**消费者监听到消息时，我们还需要把消息头中的信息拿出来存入ThreadLocal，这时候就需要一个类SimpleRabbitListener去添加一个拦截器链，用于把消息的请求头中的数据存入ThreadLocal,这里我们使用的是MethodInterceptor**
 
 
 
