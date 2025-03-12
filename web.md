@@ -16281,6 +16281,61 @@ GET /items/_search
 }
 ```
 
+#### 算分函数
+
+**java中使用算分函数如下**
+
+```java
+@Test
+void testFunctionScore() throws IOException {
+    //1：创建request对象
+    SearchRequest request = new SearchRequest("items");
+    FunctionScoreQueryBuilder.FilterFunctionBuilder[] filterFunctions
+            = {new FunctionScoreQueryBuilder.FilterFunctionBuilder(
+            QueryBuilders.termQuery("isAD", true),
+            ScoreFunctionBuilders.weightFactorFunction(1000))
+    };
+
+
+    FunctionScoreQueryBuilder functionScoreQuery =
+            QueryBuilders.functionScoreQuery(QueryBuilders.matchAllQuery(),
+                    filterFunctions).boostMode(
+                    CombineFunction.REPLACE);
+
+    request.source().query(functionScoreQuery);
+
+    //3：发送请求
+    SearchResponse response = client.search(request, RequestOptions.DEFAULT);
+
+}
+```
+
+**对应的json文件**
+
+```json
+GET /items/_search
+{
+  "query": {
+    "function_score": {
+      "query": {
+        "match_all": {}
+      },
+      "functions": [ 
+        {
+          "filter": { 
+            "term": {
+              "isAD": "true"
+            }
+          },
+          "weight": 1000 
+        }
+      ],
+      "boost_mode": "replace" 
+    }
+  }
+}
+```
+
 
 
 # Maven
