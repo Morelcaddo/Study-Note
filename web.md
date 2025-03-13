@@ -11658,6 +11658,238 @@ public class SpringDataRedisTest {
 }
 ```
 
+## 主从
+
+### 主从集群结构
+
+**下图就是一个简单的Redis主从集群结构：**
+
+![](assets\1741871049119.png)
+
+**如图所示，集群中有一个master节点、两个slave节点（现在叫replica）。当我们通过Redis的Java客户端访问主从集群时，应该做好路由：**
+
+- **如果是写操作，应该访问master节点，master会自动将数据同步给两个slave节点**
+- **如果是读操作，建议访问各个slave节点，从而分担并发压力**
+
+### 搭建主从集群
+
+#### 启动多个redis实例
+
+**我们利用课前资料提供的docker-compose文件来构建主从集群：**
+
+文件内容如下：
+
+```YAML
+version: "3.2"
+
+services:
+  r1:
+    image: redis
+    container_name: r1
+    network_mode: "host"
+    entrypoint: ["redis-server", "--port", "7001"]
+  r2:
+    image: redis
+    container_name: r2
+    network_mode: "host"
+    entrypoint: ["redis-server", "--port", "7002"]
+  r3:
+    image: redis
+    container_name: r3
+    network_mode: "host"
+    entrypoint: ["redis-server", "--port", "7003"]
+```
+
+**将其上传至虚拟机的`/root/redis`目录下：**
+
+**注意：以前我们在部署容器时，network_mode使用的时默认的bridge网桥模式，但是redis官方并不建议我们在搭建主从集群时，使用的默认的bridge模式，而是使用host模式，使容器与宿主机使用同一个网络**
+
+**执行命令，运行集群：**
+
+```Bash
+docker compose up -d
+```
+
+**由于采用的是host模式，我们看不到端口映射。不过能直接在宿主机通过ps命令查看到Redis进程：**
+
+```Shell
+ps -ef | grep redis
+```
+
+#### 构建主从关系
+
+**虽然我们启动了3个Redis实例，但是它们并没有形成主从关系。我们需要通过命令来配置主从关系：**
+
+```Bash
+# Redis5.0以前
+slaveof <masterip> <masterport>
+# Redis5.0以后
+replicaof <masterip> <masterport>
+```
+
+**有临时和永久两种模式：**
+
+- **永久生效：在redis.conf文件中利用`slaveof`命令指定`master`节点**
+- **临时生效：直接利用redis-cli控制台输入`slaveof`命令，指定`master`节点**
+
+**我们测试临时模式，首先连接`r2`，让其以`r1`为master**
+
+```Bash
+# 连接r2
+docker exec -it r2 redis-cli -p 7002
+# 认r1主，也就是7001
+slaveof 192.168.150.101 7001
+```
+
+**然后连接`r3`，让其以`r1`为master**
+
+```Bash
+# 连接r3
+docker exec -it r3 redis-cli -p 7003
+# 认r1主，也就是7001
+slaveof 192.168.150.101 7001
+```
+
+**然后连接`r1`，查看集群状态：**
+
+```Bash
+# 连接r1
+docker exec -it r1 redis-cli -p 7001
+# 查看集群状态
+info replication
+```
+
+**结果如下：**
+
+```Bash
+127.0.0.1:7001> info replication
+# Replication
+role:master
+connected_slaves:2
+slave0:ip=192.168.150.101,port=7002,state=online,offset=140,lag=1
+slave1:ip=192.168.150.101,port=7003,state=online,offset=140,lag=1
+master_failover_state:no-failover
+master_replid:16d90568498908b322178ca12078114e6c518b86
+master_replid2:0000000000000000000000000000000000000000
+master_repl_offset:140
+second_repl_offset:-1
+repl_backlog_active:1
+repl_backlog_size:1048576
+repl_backlog_first_byte_offset:1
+repl_backlog_histlen:140
+```
+
+**可以看到，当前节点`r1:7001`的角色是`master`，有两个slave与其连接：**
+
+- **`slave0`：`port`是`7002`，也就是`r2`节点**
+- **`slave1`：`port`是`7003`，也就是`r3`节点**
+
+#### 测试
+
+**依次在`r1`、`r2`、`r3`节点上执行下面命令：**
+
+```Bash
+set num 123
+
+get num
+```
+
+**你会发现，只有在`r1`这个节点上可以执行`set`命令（写操作）也可以执行`get`命令（读操作），其它两个节点只能执行`get`命令（读操作）。也就是说读写操作已经分离了。**
+
+### 主从同步原理
+
+**当主从第一次同步或者断开重连时，从节点都会发送psync请求，尝试数据同步**
+
+![](D:\StudyNote\assets\1741879034726.png)
+
+#### 全量同步
+
+**主从第一次建立连接时，会执行全量同步，将master节点的所有数据都拷贝给slave节点，流程：**
+
+![](assets\1741879815295.png)
+
+**这里有一个问题，`master`如何得知`salve`是否是第一次来同步呢？？**
+
+**有几个概念，可以作为判断依据：**
+
+- **`Replication Id`：简称`replid`，是数据集的标记，replid一致则是同一数据集。每个`master`都有唯一的`replid`，`slave`则会继承`master`节点的`replid`**
+- **`offset`：偏移量，随着记录在`repl_baklog`中的数据增多而逐渐增大。`slave`完成同步时也会记录当前同步的`offset`。如果`slave`的`offset`小于`master`的`offset`，说明`slave`数据落后于`master`，需要更新。**
+
+**因此`slave`做数据同步，必须向`master`声明自己的`replication id `和`offset`，`master`才可以判断到底需要同步哪些数据。**
+
+**由于我们在执行`slaveof`命令之前，所有redis节点都是`master`，有自己的`replid`和`offset`。**
+
+**当我们第一次执行`slaveof`命令，与`master`建立主从关系时，发送的`replid`和`offset`是自己的，与`master`肯定不一致。**
+
+**`master`判断发现`slave`发送来的`replid`与自己的不一致，说明这是一个全新的slave，就知道要做全量同步了。**
+
+**`master`会将自己的`replid`和`offset`都发送给这个`slave`，`slave`保存这些信息到本地。自此以后`slave`的`replid`就与`master`一致了。**
+
+**因此，master判断一个节点是否是第一次同步的依据，就是看replid是否一致。流程如图：**
+
+![](assets\1741880147906.png)
+
+**完整流程描述：**
+
+- **`slave`节点请求增量同步**
+- **`master`节点判断`replid`，发现不一致，拒绝增量同步**
+- **`master`将完整内存数据生成`RDB`，发送`RDB`到`slave`**
+- **`slave`清空本地数据，加载`master`的`RDB`**
+- **`master`将`RDB`期间的命令记录在`repl_baklog`，并持续将log中的命令发送给`slave`**
+- **`slave`执行接收到的命令，保持与`master`之间的同步**
+
+#### 增量同步
+
+**全量同步需要先做RDB，然后将RDB文件通过网络传输个slave，成本太高了。因此除了第一次做全量同步，其它大多数时候slave与master都是做增量同步。**
+
+**什么是增量同步？就是只更新slave与master存在差异的部分数据。如图：**
+
+![img](assets\1741880753627.png)
+
+**那么master怎么知道slave与自己的数据差异在哪里呢?**
+
+#### repl_baklog原理
+
+**master怎么知道slave与自己的数据差异在哪里呢?**
+
+**这就要说到全量同步时的`repl_baklog`文件了。这个文件是一个固定大小的数组，只不过数组是环形，也就是说角标到达数组末尾后，会再次从0开始读写，这样数组头部的数据就会被覆盖。**
+
+**`repl_baklog`中会记录Redis处理过的命令及`offset`，包括master当前的`offset`，和slave已经拷贝到的`offset`：**
+
+![](assets\1741882505478.png)
+
+**slave与master的offset之间的差异，就是salve需要增量拷贝的数据了。**
+
+**随着不断有数据写入，master的offset逐渐变大，slave也不断的拷贝，追赶master的offset：**
+
+![](assets\1741882588532.png)
+
+**直到数组被填满：**
+
+![](assets\1741882638300.png)
+
+
+
+**此时，如果有新的数据写入，就会覆盖数组中的旧数据。不过，旧的数据只要是绿色的，说明是已经被同步到slave的数据，即便被覆盖了也没什么影响。因为未同步的仅仅是红色部分：**
+
+![](assets\1741882719972.png)
+
+**但是，如果slave出现网络阻塞，导致master的`offset`远远超过了slave的`offset`：** 
+
+![](assets\1741882767246.png)
+
+**如果master继续写入新数据，master的`offset`就会覆盖`repl_baklog`中旧的数据，直到将slave现在的`offset`也覆盖：**
+
+![](assets\1741882853707.png)
+
+**棕色框中的红色部分，就是尚未同步，但是却已经被覆盖的数据。此时如果slave恢复，需要同步，却发现自己的`offset`都没有了，无法完成增量同步了。只能做全量同步。**
+
+**`repl_baklog`大小有上限，写满后会覆盖最早的数据。如果slave断开时间过久，导致尚未备份的数据被覆盖，则无法基于`repl_baklog`做增量同步，只能再次全量同步。**
+
+
+
+
+
 # RabbitMQ
 
 ## 同步调用与异步调用
