@@ -5387,6 +5387,143 @@ eureka:
 
 ![](assets\1742658397879(1).png)
 
+### 远程调用
+
+#### 负载均衡原理
+
+**在SpringCloud的早期版本中，负载均衡都是有Netflix公司开源的Ribbon组件来实现的，甚至Ribbon被直接集成到了Eureka-client和Nacos-Discovery中。**
+
+**但是自SpringCloud2020版本开始，已经弃用Ribbon，改用Spring自己开源的Spring Cloud LoadBalancer了，我们使用的OpenFeign的也已经与其整合。**
+
+**接下来我们就通过源码分析，来看看OpenFeign底层是如何实现负载均衡功能的。**
+
+##### 源码跟踪
+
+**要弄清楚OpenFeign的负载均衡原理，最佳的办法肯定是从FeignClient的请求流程入手。**
+
+**首先，我们在`com.hmall.cart.service.impl.CartServiceImpl`中的`queryMyCarts`方法中打一个断点。然后在swagger页面请求购物车列表接口。**
+
+**进入断点后，观察`ItemClient`这个接口：**
+
+![](assets\1742743512817.png)
+
+**你会发现ItemClient是一个代理对象，而代理的处理器则是`SentinelInvocationHandler`。这是因为我们项目中引入了`Sentinel`导致。**
+
+**我们进入`SentinelInvocationHandler`类中的`invoke`方法看看：**
+
+![](assets\1742743570624.png)
+
+**可以看到这里是先获取被代理的方法的处理器`MethodHandler`，接着，Sentinel就会开启对簇点资源的监控：**
+
+![](assets\1742743640414.png)
+
+**开启Sentinel的簇点资源监控后，就可以调用处理器了，我们尝试跟入，会发现有两种实现：**
+
+![](assets\1742743689696.png)
+
+**这其实就是OpenFeign远程调用的处理器了。继续跟入会进入`SynchronousMethodHandler`这个实现类：**
+
+![](assets\1742743755618.png)
+
+**在上述方法中，会循环尝试调用`executeAndDecode()`方法，直到成功或者是重试次数达到Retryer中配置的上限。**
+
+**我们继续跟入`executeAndDecode()`方法：**
+
+![](assets\1742743803265.png)
+
+**`executeAndDecode()`方法最终会利用`client`去调用`execute()`方法，发起远程调用。**
+
+**这里的client的类型是`feign.Client`接口，其下有很多实现类：**
+
+![](assets\1742743890513.png)
+
+**由于我们项目中整合了seata，所以这里client对象的类型是`SeataFeignBlockingLoadBalancerClient`，内部实现如下：**
+
+![](assets\1742744051079.png)
+
+**这里直接调用了其父类，也就是`FeignBlockingLoadBalancerClient`的`execute`方法，来看一下：**
+
+![](assets\1742744127261.png)
+
+**整段代码中核心的有4步：**
+
+- **从请求的`URI`中找出`serviceId`**
+- **利用`loadBalancerClient`，根据`serviceId`做负载均衡，选出一个实例`ServiceInstance`**
+- **用选中的`ServiceInstance`的`ip`和`port`替代`serviceId`，重构`URI`**
+- **向真正的URI发送请求**
+
+**所以负载均衡的关键就是这里的loadBalancerClient，类型是`org.springframework.cloud.client.loadbalancer.LoadBalancerClient`，这是`Spring-Cloud-Common`模块中定义的接口，只有一个实现类：**
+
+![](assets\1742744221076.png)
+
+**而这里的`org.springframework.cloud.client.loadbalancer.BlockingLoadBalancerClient`正是`Spring-Cloud-LoadBalancer`模块下的一个类：**
+
+![](assets\1742744356985.png)
+
+**我们继续跟入其`BlockingLoadBalancerClient#choose()`方法：**
+
+![](assets\1742744433082.png)
+
+**图中代码的核心逻辑如下：**
+
+- **根据serviceId找到这个服务采用的负载均衡器（`ReactiveLoadBalancer`），也就是说我们可以给每个服务配不同的负载均衡算法。**
+- **利用负载均衡器（`ReactiveLoadBalancer`）中的负载均衡算法，选出一个服务实例**
+
+**`ReactiveLoadBalancer`是`Spring-Cloud-Common`组件中定义的负载均衡器接口规范，而`Spring-Cloud-Loadbalancer`组件给出了两个实现：**
+
+![](assets\1742744477829.png)
+
+**默认的实现是`RoundRobinLoadBalancer`，即轮询负载均衡器。负载均衡器的核心逻辑如下：**
+
+![](assets\1742744525210.png)
+
+**核心流程就是两步：**
+
+- **利用`ServiceInstanceListSupplier#get()`方法拉取服务的实例列表，这一步是采用响应式编程**
+- **利用本类，也就是`RoundRobinLoadBalancer`的`getInstanceResponse()`方法挑选一个实例，这里采用了轮询算法来挑选。**
+
+**这里的ServiceInstanceListSupplier有很多实现：**
+
+![](assets\1742744570376.png)
+
+**其中CachingServiceInstanceListSupplier采用了装饰模式，加了服务实例列表缓存，避免每次都要去注册中心拉取服务实例列表。而其内部是基于`DiscoveryClientServiceInstanceListSupplier`来实现的。**
+
+**在这个类的构造函数中，就会异步的基于DiscoveryClient去拉取服务的实例列表：**
+
+![](assets\1742744614405.png)
+
+##### 流程梳理
+
+**根据之前的分析，我们会发现Spring在整合OpenFeign的时候，实现了`org.springframework.cloud.openfeign.loadbalancer.FeignBlockingLoadBalancerClient`类，其中定义了OpenFeign发起远程调用的核心流程。也就是四步：**
+
+- **获取请求中的`serviceId`**
+- **根据`serviceId`负载均衡，找出一个可用的服务实例**
+- **利用服务实例的`ip`和`port`信息重构url**
+- **向真正的url发起请求**
+
+**而具体的负载均衡则是不是由`OpenFeign`组件负责。而是分成了负载均衡的接口规范，以及负载均衡的具体实现两部分。**
+
+**负载均衡的接口规范是定义在`Spring-Cloud-Common`模块中，包含下面的接口：**
+
+- **`LoadBalancerClient`：负载均衡客户端，职责是根据serviceId最终负载均衡，选出一个服务实例**
+- **`ReactiveLoadBalancer`：负载均衡器，负责具体的负载均衡算法**
+
+**OpenFeign的负载均衡是基于`Spring-Cloud-Common`模块中的负载均衡规则接口，并没有写死具体实现。这就意味着以后还可以拓展其它各种负载均衡的实现。**
+
+**不过目前`SpringCloud`中只有`Spring-Cloud-Loadbalancer`这一种实现。**
+
+**`Spring-Cloud-Loadbalancer`模块中，实现了`Spring-Cloud-Common`模块的相关接口，具体如下：**
+
+- **`BlockingLoadBalancerClient`：实现了`LoadBalancerClient`，会根据serviceId选出负载均衡器并调用其算法实现负载均衡。**
+- **`RoundRobinLoadBalancer`：基于轮询算法实现了`ReactiveLoadBalancer`**
+- **`RandomLoadBalancer`：基于随机算法实现了`ReactiveLoadBalancer`，**
+
+**这样一来，整体思路就非常清楚了，流程图如下：**
+
+![](assets\1742744677373.png)
+
+
+
 # Mybatis	
 
 ## 入门
