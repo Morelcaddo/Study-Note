@@ -3137,6 +3137,10 @@ public class DefaultFeignConfig {
 @EnableFeignClients(defaultConfiguration = DefaultFeignConfig.class)
 ```
 
+**需要注意：openFeign的配置类不建议使用@configuration注解，会出现bean重复注册以及全局配置污染的问题**
+
+
+
 ### 微服务间的信息传输
 
 **微服务之间调用是基于OpenFeign来实现的，并不是我们自己发送的请求。我们如何才能让每一个由OpenFeign发起的请求自动携带登录用户信息呢？**
@@ -5522,7 +5526,128 @@ eureka:
 
 ![](assets\1742744677373.png)
 
+#### 切换负载均衡算法
 
+**之前分析源码的时候我们发现负载均衡的算法是有`ReactiveLoadBalancer`来定义的，我们发现它的实现类有三个：**
+
+![](assets\1742829443637.png)
+
+**其中`RoundRobinLoadBalancer`和`RandomLoadBalancer`是由`Spring-Cloud-Loadbalancer`模块提供的，而`NacosLoadBalancer`则是由`Nacos-Discorvery`模块提供的。**
+
+##### 修改负载均衡策略
+
+**查看源码会发现，`Spring-Cloud-Loadbalancer`模块中有一个自动配置类：**
+
+![](assets\1742829685633.png)
+
+**其中定义了默认的负载均衡器**：
+
+![](assets\1742829850649(1).png)
+
+**这个Bean上添加了`@ConditionalOnMissingBean`注解，也就是说如果我们自定义了这个类型的bean，则负载均衡的策略就会被改变。**
+
+**我们在`hm-cart`模块中的添加一个配置类：**
+
+代码如下：
+
+```Java
+package com.hmall.cart.config;
+
+import com.alibaba.cloud.nacos.NacosDiscoveryProperties;
+import com.alibaba.cloud.nacos.loadbalancer.NacosLoadBalancer;
+import org.springframework.cloud.client.ServiceInstance;
+import org.springframework.cloud.loadbalancer.core.ReactorLoadBalancer;
+import org.springframework.cloud.loadbalancer.core.ServiceInstanceListSupplier;
+import org.springframework.cloud.loadbalancer.support.LoadBalancerClientFactory;
+import org.springframework.context.annotation.Bean;
+import org.springframework.core.env.Environment;
+
+public class OpenFeignConfig {
+
+    @Bean
+    public ReactorLoadBalancer<ServiceInstance> reactorServiceInstanceLoadBalancer(
+            Environment environment, NacosDiscoveryProperties properties,
+            LoadBalancerClientFactory loadBalancerClientFactory) {
+        String name = environment.getProperty(LoadBalancerClientFactory.PROPERTY_NAME);
+        return new NacosLoadBalancer(
+                loadBalancerClientFactory.getLazyProvider(name, ServiceInstanceListSupplier.class), name, properties);
+    }
+
+}
+```
+
+**注意**：
+
+**这个配置类千万不要加`@Configuration`注解，也不要被SpringBootApplication扫描到。**
+
+**由于这个OpenFeignConfig没有加`@Configuration`注解，也就没有被Spring加载，因此是不会生效的。接下来，我们要在启动类上通过注解来声明这个配置。**
+
+**有两种做法：**
+
+- **全局配置：对所有服务生效**
+
+```Java
+@LoadBalancerClients(defaultConfiguration = OpenFeignConfig.class)
+```
+
+- **局部配置：只对某个服务生效**
+
+```Java
+@LoadBalancerClients({
+        @LoadBalancerClient(value = "item-service", configuration = OpenFeignConfig.class)
+})
+```
+
+##### 集群优先
+
+**`RoundRobinLoadBalancer`是轮询算法，`RandomLoadBalancer`是随机算法，那么`NacosLoadBalancer`是什么负载均衡算法呢？**
+
+**我们通过源码来分析一下，先看第一部分：**
+
+![](assets\1742830169312.png)
+
+**这部分代码的大概流程如下：**
+
+- **通过`ServiceInstanceListSupplier`获取服务实例列表**
+- **获取`NacosDiscoveryProperties`中的`clusterName`，也就是yml文件中的配置，代表当前服务实例所在集群信息（参考`2.2`小节，分级模型）**
+- **然后利用stream的filter过滤找到被调用的服务实例中与当前服务实例`clusterName`一致的。简单来说就是服务调用者与服务提供者要在一个集群**
+
+**为什么？**
+
+**假如我现在有两个机房，都部署有`item-service`和`cart-service`服务：**
+
+![](assets\1742831477407.png)
+
+**假如这些服务实例全部都注册到了同一个Nacos。现在，杭州机房的`cart-service`要调用`item-service`，会拉取到所有机房的item-service的实例。调用时会出现两种情况：**
+
+- **直接调用当前机房的`item-service`**
+- **调用其它机房的`item-service`**
+
+**本机房调用几乎没有网络延迟，速度比较快。而跨机房调用，如果两个机房相距很远，会存在较大的网络延迟。因此，我们应该尽可能避免跨机房调用，优先本地集群调用：**
+
+![](assets\1742831520345.png)
+
+##### 权重配置
+
+**我们继续跟踪`NacosLoadBalancer`源码：**
+
+![](assets\1742831582207.png)
+
+**那么问题来了， 这个权重是怎么配的呢？**
+
+**我们打开nacos控制台，进入`item-service`的服务详情页，可以看到每个实例后面都有一个编辑按钮：**
+
+![](assets\1742831704670.png)
+
+**点击，可以看到一个编辑表单：**
+
+![](assets\1742831752682.png)
+
+**我们将这里的权重修改为5：**
+
+![](assets\1742831793935.png)
+
+**访问10次购物车接口，可以发现大多数请求都访问到了8083这个实例**
 
 # Mybatis	
 
