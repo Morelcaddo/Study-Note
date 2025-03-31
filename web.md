@@ -532,14 +532,15 @@ public class DeptController {
 
 **为Controller层，Service层注入运行时所依赖的对象，只需要在对应的成员变量上加@Autowired注解**
 
-| 注解         | 说明                 | 位置                                                         |
-| ------------ | -------------------- | ------------------------------------------------------------ |
-| @Component   | 申明bean的基础注解   | 不属于以下三类时用此注解                                     |
-| @Controller  | @Component的衍生注解 | 标注在控制器类上                                             |
-| @Service     | @Component的衍生注解 | 标注在业务类上                                               |
-| @Respository | @Component的衍生注解 | 标注在数据访问类上                                           |
-| @Mapper      | Mybatis的注解        | 标注在数据访问类Mapper上                                     |
-| @MapperScan  | Spring的注解         | 标注在spring的启动类上，@MapperScan("com.hmall.mapper")，使用该注解扫描对应的mapper包，则可给这个包下的所有mapper进行依赖注入 |
+| 注解            | 说明                    | 位置                                                         |
+| --------------- | ----------------------- | ------------------------------------------------------------ |
+| @Component      | 申明bean的基础注解      | 不属于以下三类时用此注解                                     |
+| @Controller     | @Component的衍生注解    | 标注在控制器类上                                             |
+| @Service        | @Component的衍生注解    | 标注在业务类上                                               |
+| @Respository    | @Component的衍生注解    | 标注在数据访问类上                                           |
+| @Mapper         | Mybatis的注解           | 标注在数据访问类Mapper上                                     |
+| @MapperScan     | Spring的注解            | 标注在spring的启动类上，@MapperScan("com.hmall.mapper")，使用该注解扫描对应的mapper包，则可给这个包下的所有mapper进行依赖注入 |
+| @RestController | `@Controller`注解的变体 | `@RestController`用于创建RESTful风格的Web服务，通常用于返回JSON或XML数据，而不是渲染视图。 |
 
 **申明bean的时候，可以通过value属性来指定bean的名字，没有，则默认为类名首字母小写后的名字**
 
