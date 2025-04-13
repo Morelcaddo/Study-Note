@@ -110,6 +110,18 @@ Host: localhost:8080
 
 **CS架构：客户端/服务器架构模式**
 
+### **起步依赖**
+
+**只需要指定当前工程的父工程即可**
+
+```
+<parent>
+    <artifactId>spring-boot-starter-parent</artifactId>
+    <groupId>org.springframework.boot</groupId>
+    <version>2.7.3</version>
+</parent>
+```
+
 ### 简单参数的传输
 
 **原始的获取请求参数的方法，其中@RequestMapping中的连接代表这个控制器的访问链接**
@@ -5811,6 +5823,18 @@ public class OpenFeignConfig {
 
 **在mapper文件包下创建与数据库交互的mapper接口，并在上面加上@Mapper注解，在运行时，会自动生成该接口的实现类对象，并交给IOC管理，然后在承接结果的容器上加上对应的操作注解，比如执行查询操作，就加上@Select(),括号里面填对应的语句**
 
+**引入依赖**
+
+```xml
+<dependency>
+	<groupId>org.mybatis.spring.boot</groupId>
+	<artifactId>mybatis-spring-boot-starter</artifactId>
+	<version>3.0.3</version>
+</dependency>
+```
+
+**然后引入druid数据库连接池依赖即可**
+
 ```
 
 @Mapper
@@ -5840,6 +5864,23 @@ class MybatieDemoApplicationTests {
 }
 ```
 
+## 常见配置
+
+**此配置在mp中只需要把mybatis换成mybatis-plus即可**
+
+```yaml
+mybatis:
+  #mapper配置文件
+  mapper-locations: classpath:mapper/*.xml
+  #设置实体类的包名路径
+  type-aliases-package: com.sky.entity
+  configuration:
+    #开启驼峰命名
+    map-underscore-to-camel-case: true
+```
+
+
+
 ## JDBC
 
 **概念：Java语言操作关系型数据库的一套api**
@@ -5858,9 +5899,9 @@ class MybatieDemoApplicationTests {
 </dependency>
 ```
 
-
-
 ## Mybatis基础操作
+
+**需要注意：一以下所有mybatis操作再低版本mybatis中都需要给变量添加@param()注解为其命名，即使他的命名跟字段名是一致的，但是因为我们用的是高版本所以当变量名与字段名一致时不需要@Param()去命名**
 
 ### 删除
 
@@ -6151,8 +6192,6 @@ public interface EmpMapper {
 
 # Mybatis plus
 
-**个人不推荐使用，原生的Mybatis就已经很好了**
-
 ## 入门案例
 
 **依赖引入**
@@ -6370,6 +6409,8 @@ void testCustomSqlUpdate() {
 ```
 
 **第二步：在mapper方法中参数中用Param注解中申明wrapper变量名称必须是ew**
+
+**这里需要注意：在低版本的mybatis中无论变量命名是否跟字段名一致，都需加@Param规则**
 
 ```java
 public interface UserMapper extends BaseMapper<User> {
