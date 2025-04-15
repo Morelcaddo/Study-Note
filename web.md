@@ -112,7 +112,7 @@ Host: localhost:8080
 
 ### **起步依赖**
 
-**只需要指定当前工程的父工程即可**
+**只需要指定当前工程的父工程，在引用spring boot相关依赖时就可以无需指定版本**
 
 ```
 <parent>
@@ -120,6 +120,20 @@ Host: localhost:8080
     <groupId>org.springframework.boot</groupId>
     <version>2.7.3</version>
 </parent>
+```
+
+**然后接下来引入spring boot起步依赖和spring boot test依赖**
+
+```xml
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-web</artifactId>
+</dependency>
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-test</artifactId>
+</dependency>
+
 ```
 
 ### 简单参数的传输
@@ -3046,10 +3060,6 @@ PageDTO<ItemDTO> queryItemByPage(@SpringQueryMap PageQuery query);
 
 
 
-
-
-
-
 ### 连接池
 
 **OpenFeign对http请求做了封装，不过其底层发起http请求，依赖于其他框架，这些框架可以自己选择，包括以下三种：**
@@ -5868,7 +5878,19 @@ mybatis-plus:
 </dependency>
 ```
 
-**然后引入druid数据库连接池依赖即可**
+**然后引入druid数据库连接池依赖,以及java连接mysql的驱动**
+
+```xml
+<dependency>
+    <groupId>mysql</groupId>
+    <artifactId>mysql-connector-java</artifactId>
+    <version>${mysql.version}</version>
+</dependency>
+```
+
+**关于druid连接池的依赖我放到了下面，这里就不做展示**
+
+
 
 ```
 
