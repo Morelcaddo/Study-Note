@@ -2825,7 +2825,171 @@ public class Main {
 }
 ```
 
+### Spring集成异步调用
 
+**首先在需要进行异步调用的方法上加@Async注解**
+
+```java
+@Override
+@Async
+public void autoScanWmNews(Integer id) {
+	.....
+}
+```
+
+**然后调用该方法**
+
+```java
+@Override
+public ResponseResult  submitNews(WmNewsDto dto) {
+    
+	........
+    wmNewsAutoScanService.autoScanWmNews(wmNews.getId());
+    .......
+
+}
+```
+
+**然后在启动类上加@EnableAsync注解**
+
+```java
+@SpringBootApplication
+@EnableDiscoveryClient
+@MapperScan("com.heima.wemedia.mapper")
+@EnableFeignClients(basePackages = "com.heima.apis")
+@EnableAsync
+public class WemediaApplication {
+
+    public static void main(String[] args) {
+        SpringApplication.run(WemediaApplication.class, args);
+    }
+}
+```
+
+### 阿里云内容审核
+
+**首先引入依赖**
+
+```xml
+<dependency>
+    <groupId>com.aliyun</groupId>
+    <artifactId>green20220302</artifactId>
+    <version>${ali.green20220302.version}</version>
+</dependency>
+```
+
+**然后编写工具类**
+
+```java
+package com.heima.common.aliyun;
+
+import com.alibaba.fastjson.JSON;
+import com.alibaba.fastjson.JSONObject;
+import com.aliyun.green20220302.Client;
+import com.aliyun.green20220302.models.*;
+import com.aliyun.teaopenapi.models.Config;
+import com.aliyun.teautil.models.RuntimeOptions;
+import com.heima.common.properties.AliModerationProperties;
+import lombok.Data;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Component;
+
+import java.util.HashMap;
+import java.util.Map;
+
+
+@Slf4j
+@Data
+public class AliyunModeration {
+    private AliModerationProperties properties;
+
+    public String textModeration(String text, String service) throws Exception {
+
+        Client client = createClient();
+
+        JSONObject serviceParameters = new JSONObject();
+        serviceParameters.put("content", text);
+
+        TextModerationPlusRequest textModerationPlusRequest = new TextModerationPlusRequest();
+        // 检测类型
+        textModerationPlusRequest.setService(service);
+        textModerationPlusRequest.setServiceParameters(serviceParameters.toJSONString());
+
+        TextModerationPlusResponse response = client.textModerationPlus(textModerationPlusRequest);
+
+        if (response == null) throw new RuntimeException("response is null");
+
+
+        if (response.getStatusCode() == 200) {
+            TextModerationPlusResponseBody result = response.getBody();
+            Integer code = result.getCode();
+            if (code.equals(200)) {
+                TextModerationPlusResponseBody.TextModerationPlusResponseBodyData data = result.getData();
+                return data.getRiskLevel();
+            } else {
+                throw new RuntimeException("code:" + code + ",msg:" + result.getMessage());
+            }
+        } else {
+            throw new RuntimeException("code:" + response.getStatusCode() + ",msg: 请求服务失败");
+        }
+    }
+
+    public String imageModeration(String imageUrl, String service) throws Exception {
+        //注意，此处实例化的client请尽可能重复使用，避免重复建立连接，提升检测性能。
+        Client client = createClient();
+
+        // 创建RuntimeObject实例并设置运行参数
+        RuntimeOptions runtime = new RuntimeOptions();
+
+        // 检测参数构造。
+        Map<String, String> serviceParameters = new HashMap<>();
+        //公网可访问的URL。
+        serviceParameters.put("imageUrl", imageUrl);
+
+        ImageModerationRequest request = new ImageModerationRequest();
+
+        // 图片检测service：内容安全控制台图片增强版规则配置的serviceCode，示例：baselineCheck
+        request.setService(service);
+        request.setServiceParameters(JSON.toJSONString(serviceParameters));
+
+        ImageModerationResponse response = client.imageModerationWithOptions(request, runtime);
+
+        // 打印检测结果。
+        if (response == null) throw new RuntimeException("response is null");
+
+        if (response.getStatusCode() == 200) {
+            ImageModerationResponseBody body = response.getBody();
+            if (body.getCode() == 200) {
+                ImageModerationResponseBody.ImageModerationResponseBodyData data = body.getData();
+                return data.getRiskLevel();
+            } else {
+                throw new RuntimeException("image moderation not success. code:" + body.getCode());
+            }
+        } else {
+            throw new RuntimeException("response not success. status:" + response.getStatusCode());
+        }
+    }
+
+    private Client createClient() throws Exception {
+        Config config = new Config();
+
+        config.setAccessKeyId(properties.getAccessKeyId());
+        config.setAccessKeySecret(properties.getAccessKeySecret());
+        //接入区域和地址请根据实际情况修改
+        config.setRegionId(properties.getRegionId());
+        config.setEndpoint(properties.getEndpoint());
+        //读取时超时时间，单位毫秒（ms）。
+        config.setReadTimeout(properties.getReadTimeout());
+        //连接时超时时间，单位毫秒（ms）。
+        config.setConnectTimeout(properties.getConnectTimeout());
+
+        return new Client(config);
+    }
+}
+```
+
+**最后在使用自动装配原理，将其自动装入即可，这里不再演示**
 
 
 
