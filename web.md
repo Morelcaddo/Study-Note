@@ -641,6 +641,35 @@ public class UserController {
 
  **在 Spring 应用中，循环依赖指的是两个或多个 Bean 之间相互引用，造成了一个环状的依赖关系。举例来说，如果 Bean A 依赖于 Bean B，同时 Bean B 也依赖于 Bean A，就形成了循环依赖。这种情况下，Spring 容器在创建这些 Bean 时会陷入无限循环，导致应用启动失败或者出现其他不可预测的问题。因此在开发过程中应当尽量避免循环依赖的情况出现**
 
+**如果出现在出现问题的类的变量申明上加@Lazy即可,比如下面这个案例，ArticleFreeMarkerService和ApArticleService相互依赖,只需要加@Lazy注解即可解决问题**
+
+```java
+@Service
+@Slf4j
+@Transactional
+@Lazy
+public class ArticleFreemarkerServiceImpl implements ArticleFreemarkerService {
+
+    @Lazy
+    @Autowired
+    private ApArticleService apArticleService;
+    
+    .......
+}
+```
+
+```java
+@Service
+@Transactional
+@Slf4j
+@RequiredArgsConstructor
+public class ApArticleServiceImpl extends ServiceImpl<ApArticleMapper, ApArticle> implements ApArticleService {
+
+    private final ArticleFreemarkerService articleFreemarkerService;
+    .....
+}
+```
+
 
 
 ## 开发规范 Restful
@@ -2990,6 +3019,227 @@ public class AliyunModeration {
 ```
 
 **最后在使用自动装配原理，将其自动装入即可，这里不再演示**
+
+### 自管理敏感词系统（DFA算法）
+
+```java
+package com.heima.utils.common;
+
+
+import java.util.*;
+
+public class SensitiveWordUtil {
+
+    public static Map<String, Object> dictionaryMap = new HashMap<>();
+
+
+    /**
+     * 生成关键词字典库
+     * @param words
+     * @return
+     */
+    public static void initMap(Collection<String> words) {
+        if (words == null) {
+            System.out.println("敏感词列表不能为空");
+            return ;
+        }
+
+        // map初始长度words.size()，整个字典库的入口字数(小于words.size()，因为不同的词可能会有相同的首字)
+        Map<String, Object> map = new HashMap<>(words.size());
+        // 遍历过程中当前层次的数据
+        Map<String, Object> curMap = null;
+        Iterator<String> iterator = words.iterator();
+
+        while (iterator.hasNext()) {
+            String word = iterator.next();
+            curMap = map;
+            int len = word.length();
+            for (int i =0; i < len; i++) {
+                // 遍历每个词的字
+                String key = String.valueOf(word.charAt(i));
+                // 当前字在当前层是否存在, 不存在则新建, 当前层数据指向下一个节点, 继续判断是否存在数据
+                Map<String, Object> wordMap = (Map<String, Object>) curMap.get(key);
+                if (wordMap == null) {
+                    // 每个节点存在两个数据: 下一个节点和isEnd(是否结束标志)
+                    wordMap = new HashMap<>(2);
+                    wordMap.put("isEnd", "0");
+                    curMap.put(key, wordMap);
+                }
+                curMap = wordMap;
+                // 如果当前字是词的最后一个字，则将isEnd标志置1
+                if (i == len -1) {
+                    curMap.put("isEnd", "1");
+                }
+            }
+        }
+
+        dictionaryMap = map;
+    }
+
+    /**
+     * 搜索文本中某个文字是否匹配关键词
+     * @param text
+     * @param beginIndex
+     * @return
+     */
+    private static int checkWord(String text, int beginIndex) {
+        if (dictionaryMap == null) {
+            throw new RuntimeException("字典不能为空");
+        }
+        boolean isEnd = false;
+        int wordLength = 0;
+        Map<String, Object> curMap = dictionaryMap;
+        int len = text.length();
+        // 从文本的第beginIndex开始匹配
+        for (int i = beginIndex; i < len; i++) {
+            String key = String.valueOf(text.charAt(i));
+            // 获取当前key的下一个节点
+            curMap = (Map<String, Object>) curMap.get(key);
+            if (curMap == null) {
+                break;
+            } else {
+                wordLength ++;
+                if ("1".equals(curMap.get("isEnd"))) {
+                    isEnd = true;
+                }
+            }
+        }
+        if (!isEnd) {
+            wordLength = 0;
+        }
+        return wordLength;
+    }
+
+    /**
+     * 获取匹配的关键词和命中次数
+     * @param text
+     * @return
+     */
+    public static Map<String, Integer> matchWords(String text) {
+        Map<String, Integer> wordMap = new HashMap<>();
+        int len = text.length();
+        for (int i = 0; i < len; i++) {
+            int wordLength = checkWord(text, i);
+            if (wordLength > 0) {
+                String word = text.substring(i, i + wordLength);
+                // 添加关键词匹配次数
+                if (wordMap.containsKey(word)) {
+                    wordMap.put(word, wordMap.get(word) + 1);
+                } else {
+                    wordMap.put(word, 1);
+                }
+
+                i += wordLength - 1;
+            }
+        }
+        return wordMap;
+    }
+
+    public static void main(String[] args) {
+        List<String> list = new ArrayList<>();
+        list.add("法轮");
+        list.add("法轮功");
+        list.add("冰毒");
+        initMap(list);
+        String content="我是一个好人，并不会卖冰毒，也不操练法轮功,我真的不卖冰毒";
+        Map<String, Integer> map = matchWords(content);
+        System.out.println(map);
+    }
+}
+```
+
+### OCR图像文字识别
+
+**OCR （Optical Character Recognition，光学字符识别）是指电子设备（例如扫描仪或数码相机）检查纸上打印的字符，通过检测暗、亮的模式确定其形状，然后用字符识别方法将形状翻译成计算机文字的过程**
+
+| **方案**      | **说明**                                            |
+| ------------- | --------------------------------------------------- |
+| 百度OCR       | 收费                                                |
+| Tesseract-OCR | Google维护的开源OCR引擎，支持Java，Python等语言调用 |
+| Tess4J        | 封装了Tesseract-OCR  ，支持Java调用                 |
+
+**这里我们使用tess4j去实现**
+
+**首先我们引用依赖**
+
+```xml
+<dependency>   
+	<groupId>net.sourceforge.tess4j</groupId>
+    <artifactId>tess4j</artifactId>   
+    <version>4.1.1</version>
+</dependency>
+
+```
+
+**然后准备中文的字体库，编写测试代码**
+
+```java
+package com.heima.test4J;
+
+import net.sourceforge.tess4j.ITesseract;
+import net.sourceforge.tess4j.Tesseract;
+import net.sourceforge.tess4j.TesseractException;
+
+import java.io.File;
+
+public class Application {
+    public static void main(String[] args) throws TesseractException {
+        //创建实例
+        ITesseract tesseract = new Tesseract();
+
+        //设置字体库路径
+        tesseract.setDatapath("D:\\SpringCloud\\heima-leadnews\\tessdata");
+        //设置语言
+        tesseract.setLanguage("chi_sim");
+
+        //识别图片
+        String result = tesseract.doOCR(new File("C:\\Users\\22872\\Pictures\\OIP-C.jpg"));
+
+        System.out.println("识别的结果为：" + result);
+    }
+}
+```
+
+**当然我们也可以包装成一个工具类**
+
+```java
+package com.heima.common.tess4J;
+
+import lombok.Getter;
+import lombok.Setter;
+import net.sourceforge.tess4j.ITesseract;
+import net.sourceforge.tess4j.Tesseract;
+import net.sourceforge.tess4j.TesseractException;
+import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.stereotype.Component;
+
+import java.awt.image.BufferedImage;
+
+@Getter
+@Setter
+@Component
+@ConfigurationProperties(prefix = "tess4j")
+public class Tess4jClient {
+
+    private String dataPath;
+    private String language;
+
+    public String doOCR(BufferedImage image) throws TesseractException {
+        //创建Tesseract对象
+        ITesseract tesseract = new Tesseract();
+        //设置字体库路径
+        tesseract.setDatapath(dataPath);
+        //中文识别
+        tesseract.setLanguage(language);
+        //执行ocr识别
+        String result = tesseract.doOCR(image);
+        //替换回车和tal键  使结果为一行
+        result = result.replaceAll("\\r|\\n", "-").replaceAll(" ", "");
+        return result;
+    }
+
+}
+```
 
 
 
