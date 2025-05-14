@@ -2835,6 +2835,8 @@ location.href='网址'//实现页面自动跳转
 
 在js代码区域，创建Vue核心对象，定义数据模型
 
+**Vue2中定义**
+
 ```
 <script>
 	new Vue({
@@ -2843,6 +2845,21 @@ location.href='网址'//实现页面自动跳转
 			message:"Hello Vue"
 		}
 	})
+</script>
+```
+
+**Vue3中定义**
+
+```
+<script>
+    const app = Vue.createApp({
+        data(){
+            return {
+                message:'Hello Vue!'
+            }
+        }
+    })
+    app.mount('#app')
 </script>
 ```
 
@@ -4395,5 +4412,4 @@ hello("123")
 **类继承类**
 
 ![](D:\StudyNote\assets\image-20230926152222634.png)
-
 
