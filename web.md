@@ -6292,7 +6292,7 @@ mybatis-plus:
 </dependency>
 ```
 
-**然后引入druid数据库连接池依赖,以及java连接mysql的驱动**
+**除此之外还需要java连接mysql的驱动**
 
 ```xml
 <dependency>
@@ -6301,10 +6301,6 @@ mybatis-plus:
     <version>${mysql.version}</version>
 </dependency>
 ```
-
-**关于druid连接池的依赖我放到了下面，这里就不做展示**
-
-
 
 ```
 
@@ -6350,8 +6346,6 @@ mybatis:
     map-underscore-to-camel-case: true
 ```
 
-
-
 ## JDBC
 
 **概念：Java语言操作关系型数据库的一套api**
@@ -6369,6 +6363,8 @@ mybatis:
    <version>1.2.8</version>
 </dependency>
 ```
+
+**当然mybatis有自带的连接池hikari,fruid连接池只是一个可选项，需要用再加依赖即可，不加则会使用默认的hikari连接池**
 
 ## Mybatis基础操作
 
@@ -6667,7 +6663,7 @@ public interface EmpMapper {
 
 **依赖引入**
 
-**MybatisPlus官方提供了starter,其中集成了Mybatis和MybatisPlus，并且实现了自动装配的效果，因此我们可以用Mybatis plus的依赖代替Mybatis的依赖**
+**MybatisPlus官方提供了starter,其中集成了Mybatis和MybatisPlus，并且实现了自动装配的效果，因此我们可以用Mybatis plus的依赖代替Mybatis的依赖，同样的我们还需要加mysql的java驱动**
 
 ```
 <dependency>
