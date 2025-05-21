@@ -409,6 +409,208 @@ public class SpringDataRedisTest {
 }
 ```
 
+## redis实现延迟任务
+
+### **实现思路**
+
+![image-20210513150440342](assets\image-20210513150440342.png)
+
+**zset数据类型的去重有序（分数排序）特点进行延迟。例如：时间戳作为score进行排序**
+
+![image-20210513150352211](assets\image-20210513150352211.png)
+
+**问题思路**
+
+**1.为什么任务需要存储在数据库中？**
+
+**延迟任务是一个通用的服务，任何需要延迟得任务都可以调用该服务，需要考虑数据持久化的问题，存储数据库中是一种数据安全的考虑。**
+
+**2.为什么redis中使用两种数据类型，list和zset？**
+
+**效率问题，算法的时间复杂度**
+
+**3.在添加zset数据的时候，为什么不需要预加载？**
+
+**任务模块是一个通用的模块，项目中任何需要延迟队列的地方，都可以调用这个接口，要考虑到数据量的问题，如果数据量特别大，为了防止阻塞，只需要把未来几分钟要执行的数据存入缓存即可。**
+
+### 未来数据定时刷新
+
+#### reids key值匹配
+
+**方案1：keys 模糊匹配**
+
+**keys的模糊匹配功能很方便也很强大，但是在生产环境需要慎用！开发中使用keys的模糊匹配却发现redis的CPU使用率极高，所以公司的redis生产环境将keys命令禁用了！redis是单线程，会被堵塞**
+
+![image-20210515162329679](assets\image-20210515162329679.png)
+
+**方案2：scan** 
+
+**SCAN 命令是一个基于游标的迭代器，SCAN命令每次被调用之后， 都会向用户返回一个新的游标， 用户在下次迭代时需要使用这个新游标作为SCAN命令的游标参数， 以此来延续之前的迭代过程。**
+
+![image-20210515162419548](assets\image-20210515162419548.png)
+
+**代码案例：**
+
+```java
+@Test
+public void testKeys(){
+    Set<String> keys = cacheService.keys("future_*");
+    System.out.println(keys);
+
+    Set<String> scan = cacheService.scan("future_*");
+    System.out.println(scan);
+}
+```
+
+#### reids管道
+
+**普通redis客户端和服务器交互模式**
+
+![image-20210515162537224](assets\image-20210515162537224.png)
+
+**Pipeline请求模型**
+
+![image-20210515162604410](assets\image-20210515162604410.png)
+
+**官方测试结果数据对比**
+
+![image-20210515162621928](assets\image-20210515162621928.png)
+
+测试案例对比：
+
+```java
+//耗时6151
+@Test
+public  void testPiple1(){
+    long start =System.currentTimeMillis();
+    for (int i = 0; i <10000 ; i++) {
+        Task task = new Task();
+        task.setTaskType(1001);
+        task.setPriority(1);
+        task.setExecuteTime(new Date().getTime());
+        cacheService.lLeftPush("1001_1", JSON.toJSONString(task));
+    }
+    System.out.println("耗时"+(System.currentTimeMillis()- start));
+}
+
+
+@Test
+public void testPiple2(){
+    long start  = System.currentTimeMillis();
+    //使用管道技术
+    List<Object> objectList = cacheService.getstringRedisTemplate().executePipelined(new RedisCallback<Object>() {
+        @Nullable
+        @Override
+        public Object doInRedis(RedisConnection redisConnection) throws DataAccessException {
+            for (int i = 0; i <10000 ; i++) {
+                Task task = new Task();
+                task.setTaskType(1001);
+                task.setPriority(1);
+                task.setExecuteTime(new Date().getTime());
+                redisConnection.lPush("1001_1".getBytes(), JSON.toJSONString(task).getBytes());
+            }
+            return null;
+        }
+    });
+    System.out.println("使用管道技术执行10000次自增操作共耗时:"+(System.currentTimeMillis()-start)+"毫秒");
+}
+```
+
+### 分布式锁
+
+**分布式锁：控制分布式系统有序的去对共享资源进行操作，通过互斥来保证数据的一致性。**
+
+**解决方案：**
+
+![image-20210516112457413](assets\image-20210516112457413.png)
+
+
+
+### redis分布式锁
+
+**sexnx （SET if Not eXists） 命令在指定的 key 不存在时，为 key 设置指定的值。**
+
+![image-20210516112612399](assets\image-20210516112612399.png)
+
+**这种加锁的思路是，如果 key 不存在则为 key 设置 value，如果 key 已存在则 SETNX 命令不做任何操作**
+
+- **客户端A请求服务器设置key的值，如果设置成功就表示加锁成功**
+- **客户端B也去请求服务器设置key的值，如果返回失败，那么就代表加锁失败**
+- **客户端A执行代码完成，删除锁**
+- **客户端B在等待一段时间后再去请求设置key的值，设置成功**
+- **客户端B执行代码完成，删除锁**
+
+**在工具类CacheService中添加方法**
+
+```java
+/**
+ * 加锁
+ *
+ * @param name
+ * @param expire
+ * @return
+ */
+public String tryLock(String name, long expire) {
+    name = name + "_lock";
+    String token = UUID.randomUUID().toString();
+    RedisConnectionFactory factory = stringRedisTemplate.getConnectionFactory();
+    RedisConnection conn = factory.getConnection();
+    try {
+
+        //参考redis命令：
+        //set key value [EX seconds] [PX milliseconds] [NX|XX]
+        Boolean result = conn.set(
+                name.getBytes(),
+                token.getBytes(),
+                Expiration.from(expire, TimeUnit.MILLISECONDS),
+                RedisStringCommands.SetOption.SET_IF_ABSENT //NX
+        );
+        if (result != null && result)
+            return token;
+    } finally {
+        RedisConnectionUtils.releaseConnection(conn, factory,false);
+    }
+    return null;
+}
+```
+
+**修改未来数据定时刷新的方法，如下：**
+
+```java
+/**
+ * 未来数据定时刷新
+ */
+@Scheduled(cron = "0 */1 * * * ?")
+public void refresh(){
+
+    String token = cacheService.tryLock("FUTURE_TASK_SYNC", 1000 * 30);
+    if(StringUtils.isNotBlank(token)){
+        log.info("未来数据定时刷新---定时任务");
+
+        //获取所有未来数据的集合key
+        Set<String> futureKeys = cacheService.scan(ScheduleConstants.FUTURE + "*");
+        for (String futureKey : futureKeys) {//future_100_50
+
+            //获取当前数据的key  topic
+            String topicKey = ScheduleConstants.TOPIC+futureKey.split(ScheduleConstants.FUTURE)[1];
+
+            //按照key和分值查询符合条件的数据
+            Set<String> tasks = cacheService.zRangeByScore(futureKey, 0, System.currentTimeMillis());
+
+            //同步数据
+            if(!tasks.isEmpty()){
+                cacheService.refreshWithPipeline(futureKey,topicKey,tasks);
+                log.info("成功的将"+futureKey+"刷新到了"+topicKey);
+            }
+        }
+    }
+}
+```
+
+
+
+
+
 ## 主从集群
 
 ### 主从集群结构
