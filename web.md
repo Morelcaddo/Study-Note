@@ -3241,7 +3241,81 @@ public class Tess4jClient {
 }
 ```
 
+### 序列化工具Protostuff
 
+**序列化工具对比**
+
+- **JdkSerialize：java内置的序列化能将实现了Serilazable接口的对象进行序列化和反序列化， ObjectOutputStream的writeObject()方法可序列化对象生成字节数组**
+- **Protostuff：google开源的protostuff采用更为紧凑的二进制数组，表现更加优异，然后使用protostuff的编译工具生成pojo类**
+
+**拷贝资料中的两个类到heima-leadnews-utils下**
+
+**Protostuff需要引导依赖：**
+
+```xml
+<dependency>
+    <groupId>io.protostuff</groupId>
+    <artifactId>protostuff-core</artifactId>
+    <version>1.6.0</version>
+</dependency>
+
+<dependency>
+    <groupId>io.protostuff</groupId>
+    <artifactId>protostuff-runtime</artifactId>
+    <version>1.6.0</version>
+</dependency>
+```
+
+**这里我们基于protostuff写了一个工具类**
+
+```java
+package com.heima.utils.common;
+
+
+import com.heima.model.wemedia.pojos.WmNews;
+import io.protostuff.LinkedBuffer;
+import io.protostuff.ProtostuffIOUtil;
+import io.protostuff.Schema;
+import io.protostuff.runtime.RuntimeSchema;
+
+public class ProtostuffUtil {
+
+    /**
+     * 序列化
+     * @param t
+     * @param <T>
+     * @return
+     */
+    public static <T> byte[] serialize(T t){
+        Schema schema = RuntimeSchema.getSchema(t.getClass());
+        return ProtostuffIOUtil.toByteArray(t,schema,
+                LinkedBuffer.allocate(LinkedBuffer.DEFAULT_BUFFER_SIZE));
+ 
+    }
+
+    /**
+     * 反序列化
+     * @param bytes
+     * @param c
+     * @param <T>
+     * @return
+     */
+    public static <T> T deserialize(byte []bytes,Class<T> c) {
+        T t = null;
+        try {
+            t = c.newInstance();
+            Schema schema = RuntimeSchema.getSchema(t.getClass());
+             ProtostuffIOUtil.mergeFrom(bytes,t,schema);
+        } catch (InstantiationException e) {
+            e.printStackTrace();
+        } catch (IllegalAccessException e) {
+            e.printStackTrace();
+        }
+        return t;
+    }
+ 
+}
+```
 
 # Spring cloud
 
@@ -7224,6 +7298,36 @@ void testPageQuery() {
 }
 ```
 
+## 乐观锁
+
+**首先在给用于当作乐观锁的字段上加上@version注解**
+
+```java
+@Version
+private Integer version;
+```
+
+**接着添加乐观锁支持**
+
+```Java
+package com.heima.schedule.config;
+
+import com.baomidou.mybatisplus.extension.plugins.MybatisPlusInterceptor;
+import com.baomidou.mybatisplus.extension.plugins.inner.OptimisticLockerInnerInterceptor;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+@Configuration
+public class MyBatisPlusConfig {
+    @Bean
+    public MybatisPlusInterceptor optimisticLockerInnerInterceptor() {
+        MybatisPlusInterceptor interceptor = new MybatisPlusInterceptor();
+        interceptor.addInnerInterceptor(new OptimisticLockerInnerInterceptor());
+        return interceptor;
+    }
+}
+```
+
 # freemarker
 
 ## freemarker 介绍
@@ -8417,3 +8521,4 @@ public class FreemarkerTest {
 | git clone 远程地址                 | 将远程仓库的内容克隆到本地                               |
 | git pull 远程库地址别名 远程分支名 | 将远程仓库对于分支最新内容拉下来后与当前本地分支直接合并 |
 
+ 
