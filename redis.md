@@ -12,6 +12,23 @@
 
 **注意：这里需要另开一个窗口，补充的命令可以省略，ip位置换成目标ip,port换成目标端口**
 
+## docker部署
+
+```shell
+docker run -d \
+  --name redis \
+  --restart=always \
+  -p 6379:6379 \
+  -v /opt/redis/data:/data \
+  redis \
+  --requirepass "leadnews" \
+  --save 60 1 \
+  --appendonly yes \
+  --appendfsync everysec \
+  --dir /data
+
+```
+
 ## 常用数据类型
 
 **Redis存储的是key-value结构的数据，其中key是字符串类型，value有中常用的数据类型，分别是字符串string，哈希hash，列表list，集合set，有序集合sorted set/zset**
