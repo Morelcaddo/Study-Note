@@ -981,7 +981,7 @@ public class KafkaStreamQuickStart {
 
 ### **入门案例详解**
 
-#### **🧾原始输入（假设来自 Kafka topic 的句子）**
+#### **原始输入（假设来自 Kafka topic 的句子）**
 
 ```
 text复制编辑"hello kafka kafka stream"
@@ -998,9 +998,7 @@ java
 KStream<String, String> stream = builder.stream("itcast-topic-in");
 ```
 
-------
-
-#### **✅步骤 1：`flatMapValues`**
+#### **步骤 1：`flatMapValues`**
 
 ```
 java
